@@ -422,7 +422,7 @@ def create_route_detail_chart(route_data):
 
 @app.route('/favicon.ico')
 def favicon():
-    return send_from_directory('static', 'avt.ico', mimetype='image/x-icon')
+    return send_from_directory('public', 'avt.ico', mimetype='image/x-icon')
 
 @app.route('/')
 def index():
