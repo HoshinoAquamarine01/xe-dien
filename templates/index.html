@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AI MAPS - Hệ thống tối ưu lộ trình</title>
+    <title>Hệ thống tối ưu lộ trình</title>
 
     <link
       rel="icon"
@@ -870,6 +870,80 @@
         font-size: 1.05em;
       }
 
+      .stops-list {
+        margin-top: 16px;
+        font-size: 0.85em;
+      }
+
+      .stops-list strong {
+        display: block;
+        margin-bottom: 8px;
+        color: var(--dark);
+        font-weight: 600;
+      }
+
+      .stops-list-item {
+        padding: 12px 14px;
+        background: linear-gradient(
+          135deg,
+          rgba(255, 251, 235, 0.9),
+          rgba(254, 243, 199, 0.9)
+        );
+        margin: 8px 0;
+        border-radius: 10px;
+        border-left: 4px solid var(--warning);
+        font-weight: 500;
+        transition: all 0.3s;
+      }
+
+      .stops-list-item:hover {
+        transform: translateX(6px);
+        box-shadow: 0 6px 20px rgba(245, 158, 11, 0.15);
+      }
+
+      /* Thêm style cho chi tiết lộ trình */
+      .charts-section h3 {
+        font-family: "Poppins", sans-serif;
+        color: var(--dark);
+        margin-bottom: 28px;
+        font-weight: 700;
+        font-size: 1.4em;
+        padding-bottom: 16px;
+        border-bottom: 3px solid var(--primary);
+        position: relative;
+      }
+
+      .charts-section h3::after {
+        content: "";
+        position: absolute;
+        bottom: -3px;
+        left: 0;
+        width: 60px;
+        height: 3px;
+        background: linear-gradient(90deg, var(--secondary), var(--accent));
+        border-radius: 10px;
+      }
+
+      .chart-info {
+        background: linear-gradient(
+          135deg,
+          rgba(239, 246, 255, 0.5),
+          rgba(219, 234, 254, 0.5)
+        );
+        padding: 15px 20px;
+        border-radius: 12px;
+        margin-top: 15px;
+        border-left: 4px solid var(--primary);
+        font-size: 0.9em;
+        color: var(--gray);
+      }
+
+      .chart-info strong {
+        color: var(--dark);
+        display: block;
+        margin-bottom: 8px;
+      }
+
       @media (max-width: 1200px) {
         .main-layout {
           grid-template-columns: 380px 1fr;
@@ -926,8 +1000,8 @@
   <body>
     <div class="container">
       <div class="header">
-        <h1>AI MAPS - Hệ thống tối ưu lộ trình</h1>
-        <p class="subtitle">Tìm lộ trình tối ưu cho xe điện với AI</p>
+        <h1>Hệ thống tối ưu lộ trình</h1>
+        <p class="subtitle">Tìm lộ trình tối ưu cho xe điện</p>
       </div>
 
       <div class="route-form">
@@ -949,7 +1023,7 @@
         </div>
 
         <div class="config-section">
-          <h4 style="margin-bottom: 10px">Thông số Xe Điện</h4>
+          <h4 style="margin-bottom: 10px">Thông số xe điện</h4>
           <div class="config-grid">
             <div class="form-group">
               <label> Pin hiện tại (%):</label>
@@ -1003,7 +1077,7 @@
         </div>
 
         <div class="priority-section">
-          <h4 style="color: #2c3e50; margin-bottom: 10px">Tùy chọn Ưu tiên:</h4>
+          <h4 style="color: #2c3e50; margin-bottom: 10px">Tùy chọn ưu tiên:</h4>
           <div class="priority-buttons">
             <button
               type="button"
@@ -1050,20 +1124,20 @@
 
       <!-- No results -->
       <div class="no-results" id="noResults" style="display: none">
-        <h3>❌ Không tìm thấy lộ trình khả thi</h3>
+        <h3>Không tìm thấy lộ trình khả thi</h3>
         <p>Vui lòng thử lại với pin cao hơn hoặc điều chỉnh thông số xe</p>
       </div>
 
       <!-- Main layout -->
       <div class="main-layout" id="mainLayout" style="display: none">
         <div class="sidebar" id="routesList">
-          <h3>Danh Sách Lộ Trình</h3>
+          <h3>Danh sách lộ trình</h3>
           <div id="routesListContent"></div>
         </div>
 
         <div class="main-content">
           <div class="charts-section" id="chartsSection">
-            <h3 style="color: #2c3e50; margin-bottom: 20px">Biểu Đồ So Sánh</h3>
+            <h3 style="color: #2c3e50; margin-bottom: 20px">Biểu đồ so sánh</h3>
             <div id="comparisonChart" class="chart-container"></div>
           </div>
 
@@ -1075,7 +1149,7 @@
 
           <div id="detailCharts" class="charts-section" style="display: none">
             <h3 style="color: #2c3e50; margin-bottom: 20px">
-              Chi Tiết Lộ Trình
+              Chi tiết lộ trình
             </h3>
             <div id="detailChartsContent"></div>
           </div>
@@ -1182,15 +1256,24 @@
           // Update map
           document.getElementById("map").innerHTML = data.map;
 
-          // Display comparison chart
-          if (data.comparison_chart) {
+          // CHỈ HIỆN BIỂU ĐỒ SO SÁNH NẾU CÓ ≥ 2 ROUTES
+          const chartsSection = document.getElementById("chartsSection");
+          if (data.routes.length >= 2 && data.comparison_chart) {
+            chartsSection.style.display = "block";
             document.getElementById(
               "comparisonChart"
             ).innerHTML = `<img src="${data.comparison_chart}" alt="Comparison Chart">`;
+          } else {
+            chartsSection.style.display = "none";
           }
 
           // Display routes list
           displayRoutesList(data.routes);
+
+          // TỰ ĐỘNG HIỆN BIỂU ĐỒ CHI TIẾT CHO ROUTE ĐẦU TIÊN
+          if (data.routes.length > 0) {
+            showRouteDetail(0);
+          }
 
           // Ẩn loading, hiện kết quả
           document.getElementById("loading").style.display = "none";
@@ -1210,10 +1293,52 @@
         listContent.innerHTML = "";
 
         routes.forEach((route, index) => {
-          const isBest = index === 0;
+          const isBest = route.is_best === true;
           const item = document.createElement("div");
           item.className = "route-list-item" + (isBest ? " best" : "");
           item.onclick = () => showRouteDetail(index);
+
+          // TÍNH TOÁN LÝ DO TẠI SAO TỐT NHẤT
+          let reasonText = "";
+          if (isBest && routes.length > 1) {
+            const otherRoutes = routes.filter((r, i) => i !== index);
+            const avgTime =
+              otherRoutes.reduce((sum, r) => sum + r.metrics.total_time, 0) /
+              otherRoutes.length;
+            const avgCharges =
+              otherRoutes.reduce((sum, r) => sum + r.metrics.num_charges, 0) /
+              otherRoutes.length;
+            const avgDistance =
+              otherRoutes.reduce(
+                (sum, r) => sum + r.metrics.total_distance,
+                0
+              ) / otherRoutes.length;
+
+            const timeDiff = avgTime - route.metrics.total_time;
+            const chargesDiff = avgCharges - route.metrics.num_charges;
+            const distanceDiff = avgDistance - route.metrics.total_distance;
+
+            const reasons = [];
+            if (timeDiff > 5)
+              reasons.push(`Nhanh hơn ${timeDiff.toFixed(0)} phút`);
+            if (chargesDiff > 0)
+              reasons.push(`Ít hơn ${chargesDiff.toFixed(0)} lần sạc`);
+            if (distanceDiff > 1)
+              reasons.push(`Ngắn hơn ${distanceDiff.toFixed(1)} km`);
+
+            if (reasons.length > 0) {
+              reasonText = `
+                <div style="margin-top: 12px; padding: 12px; background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(5, 150, 105, 0.05)); border-left: 3px solid #10b981; border-radius: 8px;">
+                  <div style="font-weight: 700; color: #059669; margin-bottom: 8px; font-size: 0.85em;">
+                    Tại sao tối ưu nhất?
+                  </div>
+                  <div style="font-size: 0.8em; line-height: 1.6; color: #047857;">
+                    ${reasons.join("<br>")}
+                  </div>
+                </div>
+              `;
+            }
+          }
 
           item.innerHTML = `
                     <div class="route-title">
@@ -1250,11 +1375,12 @@
                             }%</div>
                         </div>
                     </div>
+                    ${reasonText}
                     ${
                       route.charging_stops.length > 0
                         ? `
                         <div class="stops-list">
-                            <strong> Trạm sạc:</strong>
+                            <strong>Trạm sạc:</strong>
                             ${route.charging_stops
                               .map(
                                 (s, i) => `
@@ -1268,7 +1394,7 @@
                               .join("")}
                         </div>
                     `
-                        : '<div style="margin-top: 10px; color: #27ae60;">Không cần sạc</div>'
+                        : '<div style="margin-top: 10px; color: #10b981; font-weight: 600; padding: 10px; background: rgba(16, 185, 129, 0.1); border-radius: 8px; text-align: center;">Không cần sạc</div>'
                     }
                 `;
 
