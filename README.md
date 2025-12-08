@@ -1,90 +1,75 @@
-# Web giúp tối ưu lộ trình cho xe điện
+# Web Tối Ưu Lộ Trình Xe Điện
 
-Ứng dụng web tìm kiếm lộ trình tối ưu cho xe điện với các trạm sạc VinFast.
+Tìm đường tốt nhất cho xe điện, tự động gợi ý trạm sạc VinFast.
 
-## Yêu cầu hệ thống
+## Cần chuẩn bị
 
 - Python 3.8+
-- MongoDB Community Server
-- Trình duyệt web hiện đại
+- MongoDB
+- Internet
 
 ## Cài đặt
 
-### Bước 1: cài đặt MongoDB
+### 1. Tải mã nguồn
+```bash
+git clone https://github.com/HoshinoAquamarine01/xe-dien.git
+cd xe-dien
+```
 
-Tải và cài đặt MongoDB Community Server:
-- Link: https://www.mongodb.com/try/download/community
-- Chọn "Install MongoDB as a Service"
-- Port mặc định: 27017
+### 2. Cài MongoDB
+Tải từ: https://www.mongodb.com/try/download/community
+- Chọn "Complete" và "Install as a Service"
+- Kiểm tra: `sc query MongoDB`
 
-### Bước 2: cài đặt thư viện cần thiết cho Python
-
+### 3. Cài thư viện
 ```bash
 pip install -r requirements.txt
 ```
 
-### Bước 3: import dữ liệu trạm sạc vào MongoDB
-
+### 4. Nạp dữ liệu
 ```bash
 python import_to_mongodb.py
 ```
 
-##  Bước 4: chạy chương trình
-
-### cách 1 có thể dùng file batch để chạy tự động
+### 5. Chạy
 ```bash
-run.bat
+run.bat gõ 
+.\run.bat
+# hoặc
+gõ python app.py
 ```
 
-### cách 2 dùng python trực tiếp
-```bash
-python app.py
-```
+Mở: **http://127.0.0.1:5000** dòng hiển thị sau running on
 
-Mở trình duyệt và truy cập để kiểm tra **http://localhost:5000**
+## Cách dùng
 
-## Để kiểm tra database
-
-Chạy database viewer:
-```bash
-python view_db.py
-```
-
-Truy cập: **http://localhost:5001**
-
-## Hướng dẫn sử dụng cơ bản cho người mới
-
-1. Nhập điểm xuất phát và điểm đến
-2. Điều chỉnh thông số xe điện (pin, tiêu thụ, dung lượng)
-3. Chọn tùy chọn ưu tiên (thời gian, quãng đường, số lần sạc)
+1. Nhập điểm đi và điểm đến
+2. Chỉnh thông số xe (pin, dung lượng, tiêu thụ)
+3. Chọn ưu tiên (thời gian/quãng đường/số lần sạc)
 4. Nhấn "Tìm kiếm"
-5. Xem lộ trình tối ưu với các trạm sạc được đề xuất
 
-### Cấu  cho xe điện của bạn
-
-Chỉnh sửa thông số xe điện trong `app.py`:
-
-```python
-EV_CONFIG = {
-    "battery_capacity": 75,      # kWh
-    "consumption": 16.3,         # kWh/100km
-    "max_range": 460,            # km
-    "charge_speed_fast": 150,    # kW (DC Fast)
-    "charge_speed_slow": 50,     # kW (AC)
-    "min_battery": 20,           # % ngưỡng an toàn
-    "charge_target": 80          # % mục tiêu sạc
-}
+## Xem database
+```bash
+python view_db.py  # http://localhost:5001
 ```
 
-## Các lưu ý và lỗi thường gặp
+## Sửa lỗi thường gặp
 
-- Đảm bảo MongoDB service đang chạy
-- Cần kết nối internet để sử dụng OSRM API và geocoding
-- Dữ liệu trạm sạc chỉ mang tính chất minh họa
+**MongoDB không chạy:**
+```bash
+net start MongoDB
+```
+
+**Thiếu thư viện:**
+```bash
+pip install -r requirements.txt
+```
+
+**Lỗi tiếng Việt:** Dùng `run.bat`
 
 ## Tác giả
 
-Phát triển bởi HCMUER - phục vụ cho môn học trí tuệ nhân tạo
+Dự án môn Trí Tuệ Nhân Tạo - HCMUER 2024-2025
 
 ## License
 
