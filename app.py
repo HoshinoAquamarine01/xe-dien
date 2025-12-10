@@ -16,7 +16,7 @@ from matplotlib import font_manager
 import numpy as np
 from pymongo import MongoClient
 
-# --- THƯ VIỆN TỐI ƯU ---
+# --- THƯ VIỆN TỐI ƪU ---
 from scipy.spatial import cKDTree
 from folium.plugins import MarkerCluster
 # -----------------------
@@ -46,28 +46,28 @@ toll_stations = list(toll_collection.find({}, {'_id': 0}))
 
 # NẾU KHÔNG CÓ DỮ LIỆU → THÔNG BÁO
 if len(highway_stations) == 0:
-    print("⚠️ Chưa có dữ liệu trạm cao tốc trong MongoDB")
+    print(" Chưa có dữ liệu trạm cao tốc trong MongoDB")
 if len(toll_stations) == 0:
-    print("⚠️ Chưa có dữ liệu trạm thu phí trong MongoDB")
-    print("💡 Tạm thời sử dụng dữ liệu mẫu")
+    print(" Chưa có dữ liệu trạm thu phí trong MongoDB")
+    print(" Tạm thời sử dụng dữ liệu mẫu")
     # Dữ liệu mẫu trạm thu phí (nếu không có trong DB)
     toll_stations = []
 
 client.close()
 
-print(f"✅ Đã tải {len(stations)} trạm sạc")
-print(f"✅ Đã tải {len(ferries)} bến phà")
-print(f"✅ Đã tải {len(highway_stations)} trạm dừng cao tốc")
-print(f"✅ Đã tải {len(toll_stations)} trạm thu phí")
+print(f" Đã tải {len(stations)} trạm sạc")
+print(f" Đã tải {len(ferries)} bến phà")
+print(f" Đã tải {len(highway_stations)} trạm dừng cao tốc")
+print(f" Đã tải {len(toll_stations)} trạm thu phí")
 
-# TẠO KD-TREE CHO TRẠM SẠC (TỐI ƯU TÌM KIẾM)
+# TẠO KD-TREE CHO TRẠM SẠC (TỐI ƪU TÌM KIẾM)
 if len(stations) > 0:
     station_coords = np.array([[s['lat'], s['lon']] for s in stations])
     station_tree = cKDTree(station_coords)
-    print("✅ Đã khởi tạo KD-Tree cho trạm sạc")
+    print(" Đã khởi tạo KD-Tree cho trạm sạc")
 else:
     station_tree = None
-    print("⚠️ Không có trạm sạc để tạo KD-Tree")
+    print(" Không có trạm sạc để tạo KD-Tree")
 
 print("Hệ thống sẵn sàng!")
 # ---------------------------------------------------------
@@ -102,54 +102,79 @@ class EVState:
         return self.time_spent < other.time_spent
 
 def create_map(center=[10.76, 106.66], zoom=12):
-    """Tạo bản đồ cơ bản"""
-    return folium.Map(location=center, zoom_start=zoom)
+    """Tạo bản đồ cơ bản với tối ưu hiệu năng"""
+    return folium.Map(
+        location=center, 
+        zoom_start=zoom,
+        tiles='OpenStreetMap',
+        prefer_canvas=True,  # Dùng Canvas thay vì SVG - nhanh hơn
+        max_zoom=18,
+        zoom_control=True,
+        scrollWheelZoom=True
+    )
 
-def add_stations_to_map(map_obj, nearby_ferries=None, nearby_highway_stations=None, nearby_toll_stations=None, show_all_ferries=True):
+def add_stations_to_map(map_obj, nearby_ferries=None, nearby_highway_stations=None, nearby_toll_stations=None, nearby_charging_stations=None):
     """
-    TỐI ƯU HIỂN THỊ BẢN ĐỒ:
+    TỐI ƪU HIỂN THỊ BẢN ĐỒ:
+    - CHỈ HIỆN TRẠM SẠC GẦN ĐƯỜNG ĐI (không hiện tất cả)
+    - nearby_charging_stations: trạm sạc gần đường đi
     - nearby_ferries: phà gần đường đi
     - nearby_highway_stations: trạm cao tốc gần đường đi
     - nearby_toll_stations: trạm thu phí gần đường đi
     """
-    # Cluster cho trạm sạc
-    marker_cluster = MarkerCluster(
-        name="Trạm sạc VinFast",
-        options={
-            'disableClusteringAtZoom': 14,
-            'spiderfyOnMaxZoom': True
-        }
-    ).add_to(map_obj)
+    # CHỈ HIỆN TRẠM SẠC GẦN ĐƯỜNG ĐI
+    if nearby_charging_stations:
+        print(f" Hiển thị {len(nearby_charging_stations)} trạm sạc gần đường đi")
+        
+        marker_cluster = MarkerCluster(
+            name="Trạm sạc gần đường đi",
+            options={
+                'disableClusteringAtZoom': 10,
+                'spiderfyOnMaxZoom': False,
+                'maxClusterRadius': 60,
+                'chunkedLoading': True
+            }
+        ).add_to(map_obj)
 
-    for station in stations:
-        icon_color = "green" if station.get('type') == 'AC' else "red"
-        
-        popup_info = f"""
-            <div style="width: 200px; font-family: Arial;">
-                <b style="color: #2980b9;">{station['name']}</b><br>
-                <hr style="margin: 5px 0;">
-                {station.get('address', 'N/A')}<br>
-                Loại: <b>{station.get('type', 'DC Fast')}</b><br>
-                Công suất: <b>{station.get('power', 150)} kW</b>
-            </div>
-        """
-        
-        folium.Marker(
-            location=[station["lat"], station["lon"]],
-            popup=popup_info,
-            icon=folium.Icon(color=icon_color, icon="bolt", prefix='fa')
-        ).add_to(marker_cluster)
+        for item in nearby_charging_stations:
+            station = item['station']
+            distance_to_route = item['distance_to_route']
+            icon_color = "green" if station.get('type') == 'AC' else "red"
+            
+            popup_info = f"""
+                <div style="width: 260px; font-family: Arial;">
+                    <b style="color: #10b981; font-size: 13px;">⚡ TRẠM SẠC GẦN ĐƯỜNG ĐI</b><br>
+                    <hr style="margin: 5px 0;">
+                    <b style="color: #1e293b; font-size: 14px;">{station['name']}</b><br>
+                    <div style="background: #f0fdf4; padding: 8px; margin: 8px 0; border-radius: 5px;">
+                         Loại: <b>{station.get('type', 'DC')}</b><br>
+                         Công suất: <b>{station.get('power', 150)} kW</b><br>
+                         {station.get('address', 'N/A')}
+                    </div>
+                    <div style="font-size: 12px; color: #555;">
+                         Cách đường đi: <b>{distance_to_route} km</b>
+                    </div>
+                </div>
+            """
+            
+            folium.Marker(
+                location=[station["lat"], station["lon"]],
+                popup=folium.Popup(popup_info, max_width=280, lazy=True),
+                icon=folium.Icon(color=icon_color, icon="bolt", prefix='fa'),
+                tooltip=f" {station['name']} - {distance_to_route}km"
+            ).add_to(marker_cluster)
     
     # XỬ LÝ HIỂN THỊ PHÀ
     if nearby_ferries:
-        print(f"🚢 Hiển thị {len(nearby_ferries)} bến phà gần đường đi")
+        print(f" Hiển thị {len(nearby_ferries)} bến phà gần đường đi")
         
         ferry_cluster = MarkerCluster(
             name="Bến phà gần đường đi",
             options={
-                'disableClusteringAtZoom': 10,  # Giảm từ 12 xuống 10
-                'spiderfyOnMaxZoom': True,
-                'maxClusterRadius': 60
+                'disableClusteringAtZoom': 10,
+                'spiderfyOnMaxZoom': False,
+                'maxClusterRadius': 60,
+                'chunkedLoading': True
             }
         ).add_to(map_obj)
         
@@ -193,17 +218,17 @@ def add_stations_to_map(map_obj, nearby_ferries=None, nearby_highway_stations=No
                 tooltip=f"Phà: {ferry['name']} ({distance_to_route}km)"
             ).add_to(ferry_cluster)
     
-    # XỬ LÝ HIỂN THỊ TRẠM DỪNG CAO TỐC - GIẢM ZOOM ĐỂ HIỆN SỚM HƠN
+    # XỬ LÝ HIỂN THỊ TRẠM DỪNG CAO TỐC
     if nearby_highway_stations:
         print(f"🛣️ Hiển thị {len(nearby_highway_stations)} trạm dừng cao tốc gần đường đi")
         
         highway_cluster = MarkerCluster(
             name="Trạm dừng cao tốc",
             options={
-                'disableClusteringAtZoom': 9,  # GIẢM TỪ 12 → 9 để hiện sớm hơn
-                'spiderfyOnMaxZoom': True,
+                'disableClusteringAtZoom': 9,
+                'spiderfyOnMaxZoom': False,
                 'maxClusterRadius': 50,
-                'showCoverageOnHover': True
+                'chunkedLoading': True
             }
         ).add_to(map_obj)
         
@@ -236,17 +261,17 @@ def add_stations_to_map(map_obj, nearby_ferries=None, nearby_highway_stations=No
                 tooltip=f"⛽ Trạm: {station['name']} - Cách {distance_to_route}km"
             ).add_to(highway_cluster)
     
-    # XỬ LÝ HIỂN THỊ TRẠM THU PHÍ - GIẢM ZOOM
+    # XỬ LÝ HIỂN THỊ TRẠM THU PHÍ
     if nearby_toll_stations:
         print(f"💰 Hiển thị {len(nearby_toll_stations)} trạm thu phí gần đường đi")
         
         toll_cluster = MarkerCluster(
             name="Trạm thu phí",
             options={
-                'disableClusteringAtZoom': 9,  # GIẢM TỪ 12 → 9
-                'spiderfyOnMaxZoom': True,
+                'disableClusteringAtZoom': 9,
+                'spiderfyOnMaxZoom': False,
                 'maxClusterRadius': 50,
-                'showCoverageOnHover': True
+                'chunkedLoading': True
             }
         ).add_to(map_obj)
         
@@ -279,49 +304,6 @@ def add_stations_to_map(map_obj, nearby_ferries=None, nearby_highway_stations=No
                 tooltip=f"💰 {station['name']} - {distance_to_route}km"
             ).add_to(toll_cluster)
             
-    elif show_all_ferries:
-        # Hiển thị tất cả phà (khi không tìm đường)
-        ferry_cluster = MarkerCluster(
-            name="Bến phà",
-            options={
-                'disableClusteringAtZoom': 13,
-                'spiderfyOnMaxZoom': True
-            }
-        ).add_to(map_obj)
-        
-        for ferry in ferries:
-            vehicle_allowed = ferry.get('vehicle_allowed', 'yes')
-            
-            if vehicle_allowed == 'yes':
-                icon_color = "blue"
-                status_text = "✅ Phương tiện đi qua được"
-                bg_color = "#e8f5e9"
-            elif vehicle_allowed == 'no':
-                icon_color = "gray"
-                status_text = "❌ Không cho phương tiện qua"
-                bg_color = "#ffebee"
-            else:
-                icon_color = "lightblue"
-                status_text = f"ℹ️ Loại: {vehicle_allowed}"
-                bg_color = "#e3f2fd"
-            
-            popup_info = f"""
-                <div style="width: 240px; font-family: Arial;">
-                    <b style="color: #3498db; font-size: 14px;">🚢 {ferry['name']}</b><br>
-                    <hr style="margin: 5px 0;">
-                    <div style="background: {bg_color}; padding: 8px; margin: 8px 0; border-radius: 5px;">
-                        {status_text}
-                    </div>
-                </div>
-            """
-            
-            folium.Marker(
-                location=[ferry["lat"], ferry["lon"]],
-                popup=popup_info,
-                icon=folium.Icon(color=icon_color, icon="ship", prefix='fa'),
-                tooltip=f"Phà: {ferry['name']}"
-            ).add_to(ferry_cluster)
-
 def get_route(start_coords, end_coords, options=None):
     """Lấy route từ OSRM API với fallback"""
     
@@ -334,15 +316,16 @@ def get_route(start_coords, end_coords, options=None):
         "overview": "full",
         "geometries": "polyline",
         "steps": "false",
-        "alternatives": "true"
+        "alternatives": "1"  # GIẢM TỪ TRUE → 1 (chỉ 1 route thay thế)
     }
     
     # Xử lý bộ lọc tránh phà
     excludes = []
     if options:
         if options.get('avoid_highways'): excludes.append('motorway')
-        if options.get('avoid_tolls'): excludes.append('toll')
-        if options.get('avoid_ferries'): excludes.append('ferry')  # Tránh phà
+        # BỎ avoid_tolls VÌ LÀM CHẬM
+        # if options.get('avoid_tolls'): excludes.append('toll')
+        if options.get('avoid_ferries'): excludes.append('ferry')
     
     for server_idx, base_url in enumerate(osrm_servers):
         try:
@@ -352,13 +335,14 @@ def get_route(start_coords, end_coords, options=None):
                 params['exclude'] = ','.join(excludes)
             
             print(f"Thử server {server_idx + 1}/{len(osrm_servers)}: {base_url}")
-            response = requests.get(url, params=params, timeout=10)
+            response = requests.get(url, params=params, timeout=15)  # Tăng timeout
             
             if response.status_code == 200:
                 data = response.json()
                 if data.get("code") == "Ok" and data.get("routes"):
                     routes = []
-                    for route in data["routes"][:3]:
+                    # CHỈ LẤY TỐI ĐA 2 ROUTES THAY VÌ 3
+                    for route in data["routes"][:2]:
                         routes.append({
                             "geometry": route["geometry"],
                             "distance": route["distance"],
@@ -371,12 +355,12 @@ def get_route(start_coords, end_coords, options=None):
             # Nếu thất bại với exclude, thử lại không có exclude
             if 'exclude' in params:
                 params_no_exclude = {k: v for k, v in params.items() if k != 'exclude'}
-                response = requests.get(url, params=params_no_exclude, timeout=10)
+                response = requests.get(url, params=params_no_exclude, timeout=15)
                 if response.status_code == 200:
                     data = response.json()
                     if data.get("code") == "Ok" and data.get("routes"):
                         routes = []
-                        for route in data["routes"][:3]:
+                        for route in data["routes"][:2]:  # SỬA: data["routes"] thay vì data.routes
                             routes.append({
                                 "geometry": route["geometry"],
                                 "distance": route["distance"],
@@ -454,13 +438,15 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
     charging_stops = []
     total_distance = 0
     
-    # Tính nhanh: Chia đoạn đường thành các checkpoint
-    num_checkpoints = max(3, int(route_distance / 100))  # Mỗi 100km 1 checkpoint
+    # TĂNG SỐ KM MỖI CHECKPOINT ĐỂ GIẢM SỐ LƯỢNG TÍNH TOÁN
+    num_checkpoints = max(2, int(route_distance / 150))  # Mỗi 150km 1 checkpoint (thay vì 100)
     checkpoint_step = max(1, len(route_coords) // num_checkpoints)
     checkpoints = [start_coords]
     for i in range(checkpoint_step, len(route_coords), checkpoint_step):
         checkpoints.append(route_coords[i])
     checkpoints.append(end_coords)
+    
+    print(f"⚡ Tối ưu: {len(checkpoints)} checkpoints cho {route_distance:.0f}km")
     
     for i in range(len(checkpoints) - 1):
         segment_dist = geodesic(checkpoints[i], checkpoints[i+1]).km
@@ -475,8 +461,13 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
             station = reachable[0]['station']
             battery_on_arrival = reachable[0]['battery_on_arrival']
             
-            # SẠC ĐẦY 100% MỖI KHI DỪNG - FIXED!
-            target_battery = 100
+            # ========== TỐI ƪU THÔNG MINH: CHỈ SẠC VỪA ĐỦ =========
+            target_battery = calculate_optimal_charge_target(
+                checkpoints[i:],  # Các điểm còn lại
+                station,
+                battery_on_arrival,
+                config
+            )
             
             charge_time = calculate_charge_time(battery_on_arrival, target_battery, station.get('power', 150), config)
             
@@ -484,24 +475,20 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
                 'station': station,
                 'arrival_battery': round(battery_on_arrival, 1),
                 'start_charge': round(battery_on_arrival, 1),
-                'end_charge': 100,  # Luôn 100%
+                'end_charge': target_battery,
                 'charge_time': round(charge_time, 1),
                 'distance_from_start': round(total_distance + reachable[0]['distance'], 1)
             })
             
-            # CẬP NHẬT PIN SAU KHI SẠC = 100%
-            battery_percent = 100
+            battery_percent = target_battery
             total_distance += reachable[0]['distance']
             
-            # Tính lại quãng đường từ trạm sạc đến checkpoint tiếp theo
             segment_dist = geodesic((station['lat'], station['lon']), checkpoints[i+1]).km
             battery_needed = calculate_battery_consumption(segment_dist, config)
         
-        # Trừ pin cho đoạn đường
         battery_percent -= battery_needed
         total_distance += segment_dist
         
-        # Đảm bảo pin không âm
         if battery_percent < 0:
             return None, f"Pin bị âm tại km {total_distance:.1f}. Cần thêm trạm sạc!"
     
@@ -519,75 +506,153 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
         'feasible': True
     }, None
 
+def calculate_optimal_charge_target(remaining_checkpoints, current_station, current_battery, config):
+    """
+    TỐI ƪU THÔNG MINH: TÍNH LƯỢNG SẠC TỐI ƪU
+    
+    Logic:
+    1. Tìm trạm tiếp theo trong vòng 200km
+    2. Nếu trạm đó tốt hơn (công suất cao) → Chỉ sạc vừa đủ đến đó
+    3. Nếu không có trạm tốt hơn → Sạc đầy để tối đa hóa tầm xa
+    
+    Args:
+        remaining_checkpoints: Các điểm còn lại trên route
+        current_station: Trạm hiện tại
+        current_battery: Pin hiện tại (%)
+        config: Cấu hình xe
+    
+    Returns:
+        Mức pin mục tiêu (%)
+    """
+    if len(remaining_checkpoints) < 2:
+        # Gần đích → Sạc vừa đủ để đến đích
+        return min(100, current_battery + 30)
+    
+    # Tính khoảng cách đến các checkpoints tiếp theo
+    current_pos = remaining_checkpoints[0]
+    max_search_distance = 200  # km
+    
+    # Tìm trạm tiếp theo tốt hơn
+    next_better_station = find_next_better_station(
+        current_pos, 
+        max_search_distance, 
+        current_station.get('power', 150),
+        config
+    )
+    
+    if next_better_station:
+        station_distance = next_better_station['distance']
+        station_power = next_better_station['station'].get('power', 150)
+        current_power = current_station.get('power', 150)
+        
+        # Tính pin cần để đến trạm đó (+ buffer 10%)
+        battery_to_next = calculate_battery_consumption(station_distance, config)
+        target = current_battery + battery_to_next + 10
+        
+        # CHỈ SẠC VỪA ĐỦ NẾU:
+        # 1. Trạm sau công suất cao hơn ít nhất 30kW
+        # 2. Cần sạc < 80% (tránh sạc chậm)
+        if station_power >= current_power + 30 and target <= 80:
+            print(f"   💡 Tối ưu: Chỉ sạc {target:.0f}% để đến trạm {next_better_station['station']['name']} ({station_power}kW)")
+            return min(85, max(target, current_battery + 20))
+    
+    # Không có trạm tốt hơn → Sạc đầy
+    return 100
+
+def find_next_better_station(current_pos, max_distance_km, current_power, config):
+    """
+    Tìm trạm tiếp theo tốt hơn trong vòng max_distance_km
+    
+    Args:
+        current_pos: Vị trí hiện tại
+        max_distance_km: Khoảng cách tìm kiếm tối đa
+        current_power: Công suất trạm hiện tại
+        config: Cấu hình xe
+    
+    Returns:
+        {station, distance} hoặc None
+    """
+    if station_tree is None or len(stations) == 0:
+        return None
+    
+    # Tìm 20 trạm gần nhất
+    try:
+        distances, indices = station_tree.query(current_pos, k=min(20, len(stations)))
+    except Exception as e:
+        return None
+    
+    better_stations = []
+    
+    for dist_deg, idx in zip(distances, indices):
+        station = stations[idx]
+        distance = geodesic(current_pos, (station['lat'], station['lon'])).km
+        
+        # CHỈ XÉT TRẠM:
+        # 1. Trong vòng max_distance_km
+        # 2. Công suất cao hơn ít nhất 30kW
+        if distance <= max_distance_km and station.get('power', 150) >= current_power + 30:
+            better_stations.append({
+                'station': station,
+                'distance': distance,
+                'power': station.get('power', 150)
+            })
+    
+    if not better_stations:
+        return None
+    
+    # Ưu tiên trạm gần + công suất cao
+    # Score = power * 1.5 - distance * 2
+    better_stations.sort(key=lambda x: x['power'] * 1.5 - x['distance'] * 2, reverse=True)
+    return better_stations[0]
+
 def add_route_to_map(map_obj, route_coords, charging_stops, color="blue", label=""):
-    """Thêm route và highlight các trạm sạc đã chọn"""
-    # VẼ ĐƯỜNG ĐI - DÙNG TẤT CẢ ĐIỂM (step=1) ĐỂ ĐƯỜNG CONG CHI TIẾT
-    folium.PolyLine(route_coords, color=color, weight=6, opacity=0.8, 
-                    popup=label, smooth_factor=1.0).add_to(map_obj)
+    """Thêm route - TỐI ƪU CỰC MẠNH"""
+    # GIẢM SỐ ĐIỂM VẼ ĐƯỜNG - CHỈ 100 ĐIỂM THAY VÌ 300
+    step = max(1, len(route_coords) // 100)
+    sampled_coords = route_coords[::step]
+    
+    folium.PolyLine(
+        sampled_coords, 
+        color=color, 
+        weight=5,  # Giảm weight
+        opacity=0.7,  # Giảm opacity
+        popup=label, 
+        smooth_factor=3.0  # Tăng smooth_factor
+    ).add_to(map_obj)
     
     # Điểm xuất phát
     folium.Marker(
         route_coords[0], 
         icon=folium.Icon(color="green", icon="play", prefix='fa'),
-        popup=folium.Popup("<b style='font-size: 14px;'>Điểm xuất phát</b>", max_width=200)
+        popup=folium.Popup("<b>Xuất phát</b>", max_width=150)
     ).add_to(map_obj)
     
     # Điểm đến
     folium.Marker(
         route_coords[-1], 
         icon=folium.Icon(color="red", icon="flag-checkered", prefix='fa'),
-        popup=folium.Popup("<b style='font-size: 14px;'> Điểm đến</b>", max_width=200)
+        popup=folium.Popup("<b>Đích</b>", max_width=150)
     ).add_to(map_obj)
     
-    # Highlight trạm sạc đã chọn với icon to và rõ ràng
+    # TRẠM SẠC - BỎ CIRCLE ĐỂ NHANH HƠN
     for i, stop in enumerate(charging_stops, 1):
         s = stop['station']
         
         popup_content = f"""
-            <div style='min-width: 250px; font-family: Inter, Arial; padding: 5px;'>
-                <h4 style='margin: 0 0 10px 0; color: #f97316; border-bottom: 2px solid #f97316; padding-bottom: 5px;'>
-                     TRẠM SẠC #{i}
-                </h4>
-                <div style='line-height: 1.8;'>
-                    <b style='color: #1e293b;'>{s['name']}</b><br>
-                     {s.get('address', 'N/A')}<br>
-                    <hr style='margin: 8px 0; border: none; border-top: 1px solid #e2e8f0;'>
-                    <div style='background: #fef3c7; padding: 8px; border-radius: 6px; margin: 5px 0;'>
-                        Công suất: <b style='color: #d97706;'>{s.get('power', 150)} kW</b><br>
-                        Pin đến: <b style='color: #dc2626;'>{stop['arrival_battery']}%</b><br>
-                        Sạc đến: <b style='color: #16a34a;'>{stop['end_charge']}%</b><br>
-                        Thời gian: <b style='color: #2563eb;'>{stop['charge_time']} phút</b>
-                    </div>
-                    <small style='color: #64748b;'>Quãng đường đã đi: {stop['distance_from_start']} km</small>
-                </div>
+            <div style='min-width: 200px; font-family: Arial;'>
+                <b style='color: #f97316;'>TRẠM #{i}</b><br>
+                <b>{s['name']}</b><br>
+                <small>{s.get('power', 150)}kW | {stop['charge_time']}p</small>
             </div>
         """
         
-        # Icon lớn và nổi bật cho trạm sạc đã chọn
         folium.Marker(
             [s['lat'], s['lon']],
-            icon=folium.Icon(
-                color="orange", 
-                icon="bolt", 
-                prefix='fa',
-                icon_color='white'
-            ),
-            popup=folium.Popup(popup_content, max_width=300),
-            tooltip=f"Trạm sạc #{i}: {s['name']}"
+            icon=folium.Icon(color="orange", icon="bolt", prefix='fa'),
+            popup=folium.Popup(popup_content, max_width=220),
+            tooltip=f"Trạm #{i}"
         ).add_to(map_obj)
         
-        # Vẽ circle để highlight khu vực
-        folium.Circle(
-            location=[s['lat'], s['lon']],
-            radius=500,  # 500m
-            color='#f97316',
-            fill=True,
-            fillColor='#f97316',
-            fillOpacity=0.1,
-            weight=2,
-            popup=f"Vùng phủ sóng trạm {i}"
-        ).add_to(map_obj)
-
 def create_comparison_chart(routes_data):
     if not routes_data: return None
     plt.rcParams['font.family'] = 'DejaVu Sans'
@@ -749,52 +814,78 @@ def find_route():
         print(f"\n{'='*60}")
         print(f"🔍 TÌM KIẾM LỘ TRÌNH")
         print(f"{'='*60}")
-        print(f"Từ: {start_addr}")
-        print(f"Đến: {end_addr}")
-        print(f"Pin ban đầu: {data.get('start_battery', 100)}%")
-        print(f"Tránh phà: {'Có' if data.get('avoid_ferries') else 'Không'}")
+        print(f"📍 Từ: {start_addr}")
+        print(f"📍 Đến: {end_addr}")
         
-        start_loc = geolocator.geocode(start_addr + ", Việt Nam", timeout=10)
-        end_loc = geolocator.geocode(end_addr + ", Việt Nam", timeout=10)
+        import time
+        total_start = time.time()
         
-        if not start_loc or not end_loc: 
-            return jsonify({"error": "Không tìm thấy địa chỉ. Vui lòng kiểm tra lại tên địa điểm."}), 400
+        # GEOCODING
+        geocode_start = time.time()
+        print(f"🔄 Đang geocode '{start_addr}'...")
+        start_loc = geolocator.geocode(start_addr + ", Việt Nam", timeout=15)  # TĂNG TIMEOUT
+        
+        if not start_loc:
+            print(f"❌ Không tìm thấy địa chỉ xuất phát: {start_addr}")
+            return jsonify({"error": f"Không tìm thấy địa chỉ xuất phát: {start_addr}"}), 400
+        
+        print(f"🔄 Đang geocode '{end_addr}'...")
+        end_loc = geolocator.geocode(end_addr + ", Việt Nam", timeout=15)
+        
+        if not end_loc:
+            print(f"❌ Không tìm thấy địa chỉ đến: {end_addr}")
+            return jsonify({"error": f"Không tìm thấy địa chỉ đến: {end_addr}"}), 400
+        
+        print(f"⏱️ Geocoding: {time.time() - geocode_start:.1f}s")
         
         start_coords = (start_loc.latitude, start_loc.longitude)
         end_coords = (end_loc.latitude, end_loc.longitude)
-        print(f"✅ Geocode thành công")
-        print(f"   Start: {start_coords}")
-        print(f"   End: {end_coords}")
+        
+        print(f"✅ Start: {start_coords[0]:.4f}, {start_coords[1]:.4f}")
+        print(f"✅ End: {end_coords[0]:.4f}, {end_coords[1]:.4f}")
         
         direct_distance = geodesic(start_coords, end_coords).km
-        print(f"📏 Khoảng cách đường chim bay: {direct_distance:.1f} km")
+        print(f"📏 Khoảng cách đường chim bay: {direct_distance:.0f}km")
         
         if direct_distance < 1:
-            return jsonify({"error": "Hai điểm quá gần nhau (< 1km). Không cần tìm đường."}), 400
+            return jsonify({"error": "Hai điểm quá gần (< 1km)"}), 400
         
-        print(f"\n🌐 Đang kết nối OSRM server...")
+        # CẢNH BÁO NẾU QUÁ XA
+        if direct_distance > 1500:
+            print(f"⚠️ CẢNH BÁO: Quãng đường rất xa ({direct_distance:.0f}km) - Có thể mất nhiều thời gian")
+        
+        # GET ROUTE
+        route_start = time.time()
+        print(f"🔄 Đang lấy route từ OSRM...")
         base_routes = get_route(start_coords, end_coords, data)
+        print(f"⏱️ OSRM API: {time.time() - route_start:.1f}s")
         
-        if not base_routes: 
+        if not base_routes:
+            print(f"❌ OSRM không trả về route nào")
             return jsonify({
-                "error": "Không thể kết nối đến OSRM server. Vui lòng:\n"
-                        "1. Kiểm tra kết nối Internet\n"
-                        "2. Thử lại sau vài phút\n"
-                        "3. OSRM public server có thể đang bảo trì"
+                "error": "Không thể tìm đường đi.\n\n"
+                        "💡 Nguyên nhân có thể:\n"
+                        f"• Quãng đường quá xa ({direct_distance:.0f}km)\n"
+                        "• OSRM server timeout\n"
+                        "• Không có đường kết nối giữa 2 điểm"
             }), 400
         
-        print(f"✅ Nhận được {len(base_routes)} route(s) từ OSRM")
+        print(f"✅ Nhận được {len(base_routes)} route từ OSRM")
         
+        # TÍNH TOÁN TRẠM SẠC
+        calc_start = time.time()
         routes_data = []
-        route_names = ['Lộ trình tối ưu', 'Lộ trình thay thế 1', 'Lộ trình thay thế 2']
-        route_colors = ['#3b82f6', '#94a3b8', '#9ca3af']
+        route_names = ['Lộ trình tối ưu', 'Lộ trình thay thế']
+        route_colors = ['#3b82f6', '#94a3b8']
         
-        # XỬ LÝ TẤT CẢ ROUTES
-        for idx, base_route in enumerate(base_routes[:3]):
+        for idx, base_route in enumerate(base_routes[:2]):
             try:
                 route_coords = polyline.decode(base_route['geometry'])
                 route_distance_km = base_route['distance'] / 1000
-                print(f"\n📍 Route {idx+1}: {route_distance_km:.1f}km, {len(route_coords)} điểm")
+                
+                print(f"\n📍 Đang xử lý route {idx+1}:")
+                print(f"   - Quãng đường: {route_distance_km:.1f}km")
+                print(f"   - Số điểm: {len(route_coords)}")
                 
                 result, err = a_star_ev_routing(
                     start_coords, end_coords, route_coords, 
@@ -802,83 +893,77 @@ def find_route():
                 )
                 
                 if result:
+                    print(f"   ✅ Khả thi: {result['num_charges']} lần sạc, {result['total_time']:.0f}p")
                     routes_data.append({
-                        'name': route_names[idx] if idx < len(route_names) else f'Lộ trình {idx+1}',
+                        'name': route_names[idx],
                         'route': base_route, 
                         'coords': route_coords,
                         'stops': result['charging_stops'], 
                         'metrics': result, 
                         'feasible': True,
-                        'color': route_colors[idx] if idx < len(route_colors) else '#9ca3af',
+                        'color': route_colors[idx],
                         'is_best': False
                     })
-                    print(f"   ✅ Khả thi - {result['num_charges']} lần sạc, {result['total_time']:.0f} phút")
                 else:
                     print(f"   ❌ Không khả thi: {err}")
             except Exception as e:
-                print(f"   ❌ Lỗi xử lý: {e}")
+                print(f"   ❌ Lỗi xử lý route {idx}: {e}")
+                import traceback
+                traceback.print_exc()
                 continue
         
-        if not routes_data: 
+        print(f"⏱️ Tính trạm sạc: {time.time() - calc_start:.1f}s")
+        
+        if not routes_data:
+            print(f"❌ KHÔNG CÓ LỘ TRÌNH KHẢ THI")
+            
+            # TÍNH TOÁN ĐỂ GỢI Ý
+            current_battery = float(data.get('start_battery', 100))
+            km_can_travel = calculate_km_from_battery(current_battery, EV_CONFIG)
+            
             return jsonify({
-                "error": "Không có lộ trình khả thi cho xe điện.\n\n"
-                        "💡 Đề xuất:\n"
-                        f"• Tăng pin ban đầu (hiện tại: {data.get('start_battery', 100)}%)\n"
-                        f"• Giảm mức tiêu thụ (hiện tại: {data.get('consumption', 16.3)} kWh/100km)\n"
-                        f"• Khoảng cách: {direct_distance:.1f}km có thể quá xa cho mức pin hiện tại"
+                "error": f"Không có lộ trình khả thi cho xe điện.\n\n"
+                        f"📊 Thông tin:\n"
+                        f"• Quãng đường: {direct_distance:.0f}km\n"
+                        f"• Pin hiện tại: {current_battery}%\n"
+                        f"• Có thể đi được: {km_can_travel:.0f}km\n"
+                        f"• Cần thêm: {direct_distance - km_can_travel:.0f}km\n\n"
+                        f"💡 Đề xuất:\n"
+                        f"• Tăng pin ban đầu lên 100%\n"
+                        f"• Giảm mức tiêu thụ xuống 15 kWh/100km\n"
+                        f"• Tăng dung lượng pin (nếu có)"
             }), 400
+        
+        routes_data.sort(key=lambda x: x['metrics']['total_time'])
+        routes_data[0]['is_best'] = True
         
         print(f"\n✅ Có {len(routes_data)} lộ trình khả thi")
         
-        # SẮP XẾP VÀ ĐÁNH DẤU ROUTE TỐT NHẤT
-        routes_data.sort(key=lambda x: x['metrics']['total_time'])
-        routes_data[0]['name'] = 'Lộ trình tối ưu'
-        routes_data[0]['color'] = '#3b82f6'
-        routes_data[0]['is_best'] = True
+        # TÌM TRẠM GẦN ĐƯỜNG ĐI
+        nearby_start = time.time()
+        best_route_coords = routes_data[0]['coords']
         
-        for idx in range(1, len(routes_data)):
-            routes_data[idx]['name'] = f'Lộ trình thay thế {idx}'
-            routes_data[idx]['color'] = '#94a3b8' if idx == 1 else '#9ca3af'
+        nearby_charging_stations = find_charging_stations_near_route(best_route_coords, max_distance_km=5)
         
-        # Tìm phà, trạm cao tốc và trạm thu phí gần đường đi
         avoid_ferries = data.get('avoid_ferries', False)
         avoid_highways = data.get('avoid_highways', False)
         avoid_tolls = data.get('avoid_tolls', False)
-        nearby_ferries = []
-        nearby_highway_stations = []
-        nearby_toll_stations = []
         
-        if routes_data:
-            best_route_coords = routes_data[0]['coords']
-            
-            # Tìm phà nếu chọn "Tránh phà"
-            if avoid_ferries:
-                nearby_ferries = find_ferries_near_route(best_route_coords, max_distance_km=5)
-                print(f"🚢 Tìm thấy {len(nearby_ferries)} bến phà gần đường đi (trong bán kính 5km)")
-            
-            # Tìm trạm cao tốc nếu KHÔNG tránh cao tốc (tức là đi cao tốc)
-            if not avoid_highways:
-                nearby_highway_stations = find_highway_stations_near_route(best_route_coords, max_distance_km=3)
-                print(f"🛣️ Tìm thấy {len(nearby_highway_stations)} trạm dừng cao tốc gần đường đi (trong bán kính 3km)")
-            
-            # Tìm trạm thu phí nếu chọn "Tránh trạm thu phí"
-            if avoid_tolls:
-                nearby_toll_stations = find_toll_stations_near_route(best_route_coords, max_distance_km=2)
-                print(f"💰 Tìm thấy {len(nearby_toll_stations)} trạm thu phí gần đường đi (trong bán kính 2km)")
+        nearby_ferries = find_ferries_near_route(best_route_coords, max_distance_km=5) if avoid_ferries else []
+        nearby_highway_stations = find_highway_stations_near_route(best_route_coords, max_distance_km=3) if not avoid_highways else []
+        nearby_toll_stations = find_toll_stations_near_route(best_route_coords, max_distance_km=2) if avoid_tolls else []
+        
+        print(f"⏱️ Tìm trạm gần đường: {time.time() - nearby_start:.1f}s")
         
         # TẠO BẢN ĐỒ
+        map_start = time.time()
         center_lat = (start_coords[0] + end_coords[0]) / 2
         center_lon = (start_coords[1] + end_coords[1]) / 2
-        m = folium.Map(
-            location=[center_lat, center_lon], 
-            zoom_start=8,
-            tiles='OpenStreetMap',
-            prefer_canvas=True
-        )
+        m = create_map(center=[center_lat, center_lon], zoom=8)
         
-        # Thêm trạm sạc, phà, trạm cao tốc và trạm thu phí
         add_stations_to_map(
-            m, 
+            m,
+            nearby_charging_stations=nearby_charging_stations,
             nearby_ferries=nearby_ferries if avoid_ferries else None,
             nearby_highway_stations=nearby_highway_stations if not avoid_highways else None,
             nearby_toll_stations=nearby_toll_stations if avoid_tolls else None
@@ -887,39 +972,30 @@ def find_route():
         for r in reversed(routes_data):
             add_route_to_map(m, r['coords'], r['stops'], r['color'], r['name'])
         
+        # LEGEND SIÊU COMPACT - 2 CỘT
         legend_html = '''
-        <div style="position: fixed; 
-                    bottom: 50px; right: 50px; 
-                    background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
-                    padding: 20px; 
-                    border-radius: 16px;
-                    box-shadow: 0 10px 25px rgba(0,0,0,0.15);
-                    z-index: 9999;
-                    font-family: 'Inter', Arial, sans-serif;
-                    font-size: 13px;
-                    min-width: 240px;
-                    border: 2px solid #e2e8f0;">
-            <h4 style="margin: 0 0 15px 0; 
-                       font-size: 16px; 
-                       color: #1e293b;
-                       border-bottom: 2px solid #6366f1;
-                       padding-bottom: 10px;">
-                📍 Chú thích
-            </h4>
-            <div style="line-height: 2.2;">
-                <div><i class="fa fa-play" style="color: green; width: 20px;"></i> Điểm xuất phát</div>
-                <div><i class="fa fa-flag-checkered" style="color: red; width: 20px;"></i> Điểm đến</div>
-                <div style="height: 3px; width: 40px; background: #3b82f6; display: inline-block; vertical-align: middle;"></div> <b>Lộ trình tối ưu</b>
-                <div style="height: 3px; width: 40px; background: #94a3b8; display: inline-block; vertical-align: middle;"></div> Lộ trình thay thế
-                <div><i class="fa fa-bolt" style="color: orange; width: 20px;"></i> <b>Trạm sạc đã chọn</b></div>
-                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #e2e8f0;">
-                    <div><i class="fa fa-ship" style="color: blue; width: 20px;"></i> Bến phà</div>
-                    <div><i class="fa fa-gas-pump" style="color: orange; width: 20px;"></i> Trạm dừng cao tốc</div>
-                    <div><i class="fa fa-money-bill" style="color: red; width: 20px;"></i> Trạm thu phí</div>
-                </div>
-            </div>
-            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #64748b;">
-                💡 Các điểm gần đường đi sẽ hiện theo tùy chọn
+        <div style="position: fixed; bottom: 15px; right: 15px; 
+                    background: white; padding: 10px; border-radius: 8px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.25); z-index: 9999;
+                    font-size: 10px; width: 280px; border: 2px solid #6366f1;">
+            <b style="font-size: 12px; color: #1e293b; display: block; margin-bottom: 6px; text-align: center; border-bottom: 2px solid #6366f1; padding-bottom: 4px;">
+                 Chú thích
+            </b>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; line-height: 1.6;">
+                <div><i class="fa fa-play" style="color: green; width: 14px; font-size: 9px;"></i> Xuất phát</div>
+                <div><i class="fa fa-flag-checkered" style="color: red; width: 14px; font-size: 9px;"></i> Đích</div>
+                
+                <div><div style="height: 2px; width: 25px; background: #3b82f6; display: inline-block; vertical-align: middle;"></div> Tối ưu</div>
+                <div><div style="height: 2px; width: 25px; background: #94a3b8; display: inline-block; vertical-align: middle;"></div> Thay thế</div>
+                
+                <div><i class="fa fa-bolt" style="color: orange; width: 14px; font-size: 9px;"></i> <b>Đã chọn</b></div>
+                <div><i class="fa fa-bolt" style="color: green; width: 14px; font-size: 9px;"></i> AC</div>
+                
+                <div><i class="fa fa-bolt" style="color: red; width: 14px; font-size: 9px;"></i> DC</div>
+                <div><i class="fa fa-ship" style="color: blue; width: 14px; font-size: 9px;"></i> Phà</div>
+                
+                <div><i class="fa fa-gas-pump" style="color: orange; width: 14px; font-size: 9px;"></i> Cao tốc</div>
+                <div><i class="fa fa-money-bill" style="color: red; width: 14px; font-size: 9px;"></i> Thu phí</div>
             </div>
         </div>
         '''
@@ -927,12 +1003,13 @@ def find_route():
         
         all_coords = []
         for r in routes_data:
-            all_coords.extend(r['coords'])
+            all_coords.extend(r['coords'][::10])  # Lấy mẫu
         if all_coords:
-            m.fit_bounds(all_coords, padding=[50, 50])
+            m.fit_bounds(all_coords, padding=[30, 30])
         
-        print(f"\n{'='*60}")
-        print(f"✅ HOÀN THÀNH - Trả về {len(routes_data)} lộ trình")
+        print(f"⏱️ Tạo bản đồ: {time.time() - map_start:.1f}s")
+        
+        print(f"\n✅ TỔNG THỜI GIAN: {time.time() - total_start:.1f}s")
         print(f"{'='*60}\n")
             
         return jsonify({
@@ -941,7 +1018,8 @@ def find_route():
                 'name': r['name'], 
                 'metrics': r['metrics'], 
                 'charging_stops': r['stops'],
-                'detail_chart': create_route_detail_chart(r),
+                # CHỈ TẠO BIỂU ĐỒ CHI TIẾT CHO ROUTE TỐI ƯU (is_best=True)
+                'detail_chart': create_route_detail_chart(r) if r.get('is_best', False) else None,
                 'is_best': r.get('is_best', False)
             } for r in routes_data],
             "comparison_chart": create_comparison_chart(routes_data)
@@ -954,24 +1032,20 @@ def find_route():
         return jsonify({"error": f"Lỗi hệ thống: {str(e)}"}), 500
 
 def find_highway_stations_near_route(route_coords, max_distance_km=3):
-    """Tìm trạm dừng cao tốc gần đường đi"""
-    print(f"🔍 Tìm kiếm trạm cao tốc... (Tổng: {len(highway_stations)} trạm)")
-    
+    """Tìm trạm cao tốc - TỐI ƪU"""
     if len(highway_stations) == 0:
-        print("⚠️ KHÔNG CÓ DỮ LIỆU TRẠM CAO TỐC TRONG HỆ THỐNG!")
         return []
     
+    # CHỈ LẤY 10 ĐIỂM MẪU
+    num_samples = min(10, len(route_coords))
+    step = max(1, len(route_coords) // num_samples)
+    sampled_coords = route_coords[::step]
+    
     nearby_stations = []
-    sampled_coords = route_coords[::20] if len(route_coords) > 20 else route_coords
     
     for station in highway_stations:
         station_pos = (station['lat'], station['lon'])
-        min_distance = float('inf')
-        
-        for coord in sampled_coords:
-            distance = geodesic(station_pos, coord).km
-            if distance < min_distance:
-                min_distance = distance
+        min_distance = min(geodesic(station_pos, coord).km for coord in sampled_coords)
         
         if min_distance <= max_distance_km:
             nearby_stations.append({
@@ -980,62 +1054,48 @@ def find_highway_stations_near_route(route_coords, max_distance_km=3):
             })
     
     nearby_stations.sort(key=lambda x: x['distance_to_route'])
-    print(f"✅ Tìm thấy {len(nearby_stations)} trạm cao tốc gần đường đi")
-    
-    return nearby_stations
+    return nearby_stations[:3]  # CHỈ 3 TRẠM
 
 def find_ferries_near_route(route_coords, max_distance_km=5):
-    """
-    Tìm các bến phà nằm gần đường đi
-    route_coords: list các tọa độ [(lat, lon), ...]
-    max_distance_km: khoảng cách tối đa (mặc định 5km)
-    """
-    nearby_ferries = []
+    """Tìm phà - TỐI ƪU"""
+    if len(ferries) == 0:
+        return []
     
-    # Lấy mẫu route để tăng tốc (mỗi 20 điểm lấy 1)
-    sampled_coords = route_coords[::20] if len(route_coords) > 20 else route_coords
+    # CHỈ LẤY 10 ĐIỂM MẪU
+    num_samples = min(10, len(route_coords))
+    step = max(1, len(route_coords) // num_samples)
+    sampled_coords = route_coords[::step]
+    
+    nearby_ferries = []
     
     for ferry in ferries:
         ferry_pos = (ferry['lat'], ferry['lon'])
-        min_distance = float('inf')
+        min_distance = min(geodesic(ferry_pos, coord).km for coord in sampled_coords)
         
-        # Tính khoảng cách ngắn nhất từ phà đến đường đi
-        for coord in sampled_coords:
-            distance = geodesic(ferry_pos, coord).km
-            if distance < min_distance:
-                min_distance = distance
-        
-        # Nếu phà nằm trong bán kính
         if min_distance <= max_distance_km:
             nearby_ferries.append({
                 'ferry': ferry,
                 'distance_to_route': round(min_distance, 2)
             })
     
-    # Sắp xếp theo khoảng cách
     nearby_ferries.sort(key=lambda x: x['distance_to_route'])
-    
-    return nearby_ferries
+    return nearby_ferries[:3]  # CHỈ 3 TRẠM
 
 def find_toll_stations_near_route(route_coords, max_distance_km=2):
-    """Tìm trạm thu phí gần đường đi"""
-    print(f"🔍 Tìm kiếm trạm thu phí... (Tổng: {len(toll_stations)} trạm)")
-    
+    """Tìm trạm thu phí - TỐI ƪU"""
     if len(toll_stations) == 0:
-        print("⚠️ KHÔNG CÓ DỮ LIỆU TRẠM THU PHÍ TRONG HỆ THỐNG!")
         return []
     
+    # CHỈ LẤY 10 ĐIỂM MẪU
+    num_samples = min(10, len(route_coords))
+    step = max(1, len(route_coords) // num_samples)
+    sampled_coords = route_coords[::step]
+    
     nearby_stations = []
-    sampled_coords = route_coords[::20] if len(route_coords) > 20 else route_coords
     
     for station in toll_stations:
         station_pos = (station['lat'], station['lon'])
-        min_distance = float('inf')
-        
-        for coord in sampled_coords:
-            distance = geodesic(station_pos, coord).km
-            if distance < min_distance:
-                min_distance = distance
+        min_distance = min(geodesic(station_pos, coord).km for coord in sampled_coords)
         
         if min_distance <= max_distance_km:
             nearby_stations.append({
@@ -1044,9 +1104,58 @@ def find_toll_stations_near_route(route_coords, max_distance_km=2):
             })
     
     nearby_stations.sort(key=lambda x: x['distance_to_route'])
-    print(f"✅ Tìm thấy {len(nearby_stations)} trạm thu phí gần đường đi")
-    
-    return nearby_stations
+    return nearby_stations[:3]  # CHỈ 3 TRẠM
 
+def find_charging_stations_near_route(route_coords, max_distance_km=5):
+    """Tìm trạm sạc gần đường đi - TỐI ƪU CỰC MẠNH"""
+    print(f"🔍 Tìm kiếm trạm sạc... (Tổng: {len(stations)} trạm)")
+    
+    if len(stations) == 0 or station_tree is None:
+        print("⚠️ KHÔNG CÓ DỮ LIỆU TRẠM SẠC!")
+        return []
+    
+    # GIẢM SỐ ĐIỂM MẪU MẠNH MẼ - CHỈ LẤY 10-15 ĐIỂM THAY VÌ HÀNG TRĂM
+    num_samples = min(15, len(route_coords))  # TỐI ĐA 15 ĐIỂM
+    step = max(1, len(route_coords) // num_samples)
+    sampled_coords = route_coords[::step]
+    
+    print(f"   📊 Lấy mẫu: {len(sampled_coords)} điểm từ {len(route_coords)} điểm gốc")
+    
+    nearby_stations_set = set()  # Dùng set để tránh trùng lặp
+    
+    # DÙNG KD-TREE ĐỂ TÌM NHANH
+    for coord in sampled_coords:
+        # Tìm 5 trạm gần nhất cho mỗi điểm mẫu
+        try:
+            distances, indices = station_tree.query(coord, k=5)
+            for dist_deg, idx in zip(distances, indices):
+                station = stations[idx]
+                actual_distance = geodesic(coord, (station['lat'], station['lon'])).km
+                
+                if actual_distance <= max_distance_km:
+                    nearby_stations_set.add((
+                        idx,
+                        round(actual_distance, 2)
+                    ))
+        except Exception as e:
+            continue
+    
+    # Chuyển set thành list
+    nearby_stations = [
+        {
+            'station': stations[idx],
+            'distance_to_route': dist
+        }
+        for idx, dist in nearby_stations_set
+    ]
+    
+    nearby_stations.sort(key=lambda x: x['distance_to_route'])
+    print(f"✅ Tìm thấy {len(nearby_stations)} trạm sạc gần đường đi")
+    
+    return nearby_stations[:10]  # CHỈ 10 TRẠM THAY VÌ 15
+
+# BỎ API NÀY - KHÔNG DÙNG ĐẾN
+# @app.route('/route/<int:route_index>/chart', methods=['POST']), host='0.0.0.0')
+# def get_route_chart(route_index):#     try:#         data = request.json#         route_data = data.get('route_data')#         #         if not route_data or not route_data.get('stops'):#             return jsonify({"error": "Không có dữ liệu trạm sạc"}), 400#         #         chart = create_route_detail_chart(route_data)#         return jsonify({"chart": chart})#         #     except Exception as e:#         return jsonify({"error": str(e)}), 500
 if __name__ == '__main__':
     app.run(debug=True, port=5000, host='0.0.0.0')

@@ -789,7 +789,7 @@
       .loading {
         text-align: center;
         padding: 60px;
-        display: none; /* Ẩn mặc định */
+        display: none;
         background: linear-gradient(
           135deg,
           rgba(255, 255, 255, 0.95),
@@ -840,6 +840,23 @@
         font-weight: 600;
         font-size: 1.2em;
         margin-top: 10px;
+      }
+
+      .loading-timer {
+        margin-top: 15px;
+        font-size: 0.9em;
+        color: var(--primary);
+        font-weight: 700;
+      }
+
+      .loading-hint {
+        margin-top: 20px;
+        padding: 15px;
+        background: rgba(245, 158, 11, 0.1);
+        border-radius: 12px;
+        font-size: 0.85em;
+        color: var(--warning);
+        line-height: 1.6;
       }
 
       .no-results {
@@ -995,6 +1012,27 @@
           gap: 12px;
         }
       }
+
+      .route-content {
+        padding: 20px;
+        background: #f8fafc;
+        border-radius: 0 0 12px 12px;
+      }
+
+      .route-toggle {
+        transition: transform 0.3s ease;
+      }
+
+      .route-toggle.rotate {
+        transform: rotate(180deg);
+      }
+
+      .chart-container {
+        background: white;
+        padding: 15px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+      }
     </style>
   </head>
   <body>
@@ -1120,6 +1158,12 @@
       <div class="loading" id="loading" style="display: none">
         <div class="spinner"></div>
         <p>Đang tìm kiếm lộ trình tối ưu...</p>
+        <div class="loading-timer" id="loadingTimer">0 giây</div>
+        <div class="loading-hint">
+          💡 <strong>Lưu ý:</strong> Lộ trình xa (>300km) có thể mất 20-60
+          giây<br />
+          do phải tính toán nhiều trạm sạc và lộ trình thay thế
+        </div>
       </div>
 
       <!-- No results -->
@@ -1159,6 +1203,8 @@
 
     <script>
       let currentRoutes = [];
+      let loadingInterval = null;
+      let loadingStartTime = 0;
 
       // Priority selection
       document.querySelectorAll(".priority-btn").forEach((btn) => {
@@ -1194,6 +1240,18 @@
         document.getElementById("km_remaining").value = Math.round(kmRemaining);
       }
 
+      function updateLoadingTimer() {
+        const elapsed = Math.floor((Date.now() - loadingStartTime) / 1000);
+        const timerEl = document.getElementById("loadingTimer");
+        if (timerEl) {
+          timerEl.textContent = `${elapsed} giây`;
+          if (elapsed > 30) {
+            timerEl.style.color = "var(--warning)";
+            timerEl.innerHTML = `${elapsed} giây<br><small style="font-size: 0.8em;">Đang xử lý... vui lòng chờ</small>`;
+          }
+        }
+      }
+
       async function findRoute() {
         const start = document.getElementById("start").value;
         const end = document.getElementById("end").value;
@@ -1216,13 +1274,23 @@
           return;
         }
 
+        console.log("🚀 BẮT ĐẦU TÌM KIẾM:", new Date().toLocaleTimeString());
+        console.time("⏱️ Thời gian tổng");
+
         // Ẩn tất cả, chỉ hiện loading
         document.getElementById("loading").style.display = "block";
         document.getElementById("mainLayout").style.display = "none";
         document.getElementById("noResults").style.display = "none";
         document.getElementById("searchBtn").disabled = true;
 
+        // Bắt đầu timer
+        loadingStartTime = Date.now();
+        loadingInterval = setInterval(updateLoadingTimer, 1000);
+
         try {
+          console.log("📡 Gửi request tới /route...");
+          const startTime = performance.now();
+
           const response = await fetch("/route", {
             method: "POST",
             headers: {
@@ -1242,15 +1310,39 @@
             }),
           });
 
-          const data = await response.json();
+          const responseTime = ((performance.now() - startTime) / 1000).toFixed(
+            2
+          );
+          console.log(`✅ Response nhận sau: ${responseTime}s`);
 
-          if (data.error) {
-            alert("❌ Lỗi: " + data.error);
-            document.getElementById("loading").style.display = "none";
+          // Dừng timer
+          clearInterval(loadingInterval);
+
+          // Kiểm tra HTTP status
+          if (!response.ok) {
+            console.error("❌ HTTP Error:", response.status);
+            throw new Error(`Server trả về lỗi: ${response.status}`);
+          }
+
+          console.log("📦 Parse JSON...");
+          const data = await response.json();
+          console.log("✅ Data:", data);
+          console.timeEnd("⏱️ Thời gian tổng");
+
+          // Ẩn loading ngay sau khi nhận response
+          document.getElementById("loading").style.display = "none";
+
+          if (data.error || !data.routes || data.routes.length === 0) {
+            console.error("❌ Không có route:", data.error);
             document.getElementById("noResults").style.display = "block";
+            if (data.error) {
+              document.querySelector(".no-results h3").textContent =
+                "Lỗi: " + data.error;
+            }
             return;
           }
 
+          console.log(`✅ Tìm thấy ${data.routes.length} lộ trình`);
           currentRoutes = data.routes;
 
           // Update map
@@ -1275,14 +1367,19 @@
             showRouteDetail(0);
           }
 
-          // Ẩn loading, hiện kết quả
-          document.getElementById("loading").style.display = "none";
+          // Hiện kết quả
           document.getElementById("mainLayout").style.display = "grid";
+          console.log("🎉 HOÀN TẤT!");
         } catch (error) {
-          console.error("Error:", error);
-          alert("❌ Có lỗi xảy ra: " + error.message);
+          console.error("❌ LỖI:", error);
+          console.timeEnd("⏱️ Thời gian tổng");
+          clearInterval(loadingInterval);
           document.getElementById("loading").style.display = "none";
           document.getElementById("noResults").style.display = "block";
+          document.querySelector(".no-results h3").textContent =
+            "Có lỗi xảy ra khi tìm kiếm";
+          document.querySelector(".no-results p").textContent =
+            error.message || "Vui lòng kiểm tra kết nối hoặc thử lại";
         } finally {
           document.getElementById("searchBtn").disabled = false;
         }
@@ -1419,6 +1516,21 @@
                      <img src="${route.detail_chart}" alt="Detail Chart" style="max-width: 100%; border-radius: 8px;">`;
         } else {
           document.getElementById("detailCharts").style.display = "none";
+        }
+      }
+
+      function toggleRoute(index) {
+        const content = document.getElementById(`route-content-${index}`);
+
+        if (content.style.display === "none") {
+          // Đóng tất cả
+          document
+            .querySelectorAll(".route-content")
+            .forEach((c) => (c.style.display = "none"));
+          // Mở route hiện tại
+          content.style.display = "block";
+        } else {
+          content.style.display = "none";
         }
       }
 
