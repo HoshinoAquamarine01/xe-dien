@@ -3,1060 +3,1988 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Hệ thống tối ưu lộ trình</title>
-
+    <title>EV Router - Hệ thống tối ưu lộ trình xe điện</title>
     <link
       rel="icon"
       type="image/x-icon"
       href="{{ url_for('static', filename='avt.ico') }}"
     />
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
-    />
 
     <style>
-      @import url("https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@300;400;500;600;700;800;900&family=Source+Sans+Pro:wght@400;600;700&family=Roboto:wght@300;400;500;700&display=swap");
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap");
 
       * {
         margin: 0;
         padding: 0;
         box-sizing: border-box;
       }
+
       :root {
-        /* Đổi sang tông xanh lá cây */
-        --primary: #2e7d32; /* Xanh lá đậm vừa */
-        --primary-dark: #1b5e20; /* Xanh lá rất đậm */
-        --primary-light: #4caf50; /* Xanh lá sáng */
-        --secondary: #388e3c; /* Xanh phụ trợ */
-        --accent: #66bb6a; /* Xanh nhấn */
-        --success: #2e7d32; /* Đồng bộ màu success */
-        --warning: #f9a825; /* Vàng đậm cho cảnh báo */
-        --danger: #c62828; /* Đỏ đậm cho lỗi */
-        --dark: #1a1a1a;
-        --gray: #757575;
+        --primary: #10b981;
+        --primary-dark: #059669;
+        --primary-light: #34d399;
+        --secondary: #3b82f6;
+        --secondary-light: #60a5fa;
+        --alert: #ef4444;
+        --warning: #f59e0b;
+        --dark: #111827;
+        --gray-900: #1f2937;
+        --gray-700: #374151;
+        --gray-600: #4b5563;
+        --gray-500: #6b7280;
+        --gray-400: #9ca3af;
+        --gray-300: #d1d5db;
+        --gray-200: #e5e7eb;
+        --gray-100: #f3f4f6;
+        --gray-50: #f9fafb;
         --white: #ffffff;
+        --sidebar-width: 420px;
+      }
+
+      html,
+      body {
+        height: 100%;
+        overflow: hidden;
       }
 
       body {
-        font-family: "Nunito Sans", "Source Sans Pro", "Roboto", -apple-system, BlinkMacSystemFont, sans-serif;
-        /* Xóa gradient nền, chuyển thành màu đơn sắc xanh nhạt */
-        background: #e8f5e9;
-        /* Xóa animation gradientShift */
-        padding: 20px;
+        font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+        background: var(--gray-100);
+        color: var(--dark);
+        line-height: 1.5;
+      }
+
+      /* ===== MAIN LAYOUT: SPLIT SCREEN ===== */
+      .app-container {
+        display: flex;
+        height: 100vh;
+        overflow: hidden;
+      }
+
+      /* ===== LEFT SIDEBAR ===== */
+      .sidebar {
+        width: var(--sidebar-width);
+        min-width: var(--sidebar-width);
+        background: var(--gray-50);
+        display: flex;
+        flex-direction: column;
+        border-right: 1px solid var(--gray-200);
+        height: 100vh;
+        overflow-y: auto; /* Đã sửa: cho phép cuộn dọc khi nội dung quá dài */
         overflow-x: hidden;
-        min-height: 100vh;
-        position: relative;
       }
 
-      /* Xóa các hiệu ứng đốm sáng gradient ở nền */
-      body::before {
-        display: none;
+      /* Scrollbar style cho sidebar */
+      .sidebar::-webkit-scrollbar {
+        width: 6px;
       }
 
-      .container {
-        max-width: 1600px;
-        margin: 0 auto;
-        background: #ffffff; /* Nền trắng phẳng */
-        /* backdrop-filter vẫn giữ để tạo độ sâu nhẹ nếu có lớp phủ, nhưng nền đã là solid */
-        padding: 50px;
-        border-radius: 0px; /* Bo góc container có thể giữ hoặc bỏ, ở đây mình bỏ để hợp với style cứng cáp */
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-        animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-        position: relative;
-        z-index: 2;
-        border: 1px solid #c8e6c9;
+      .sidebar::-webkit-scrollbar-track {
+        background: var(--gray-100);
       }
 
-      @keyframes fadeInUp {
-        from {
-          opacity: 0;
-          transform: translateY(40px);
-        }
-        to {
-          opacity: 1;
-          transform: translateY(0);
-        }
+      .sidebar::-webkit-scrollbar-thumb {
+        background: var(--gray-300);
+        border-radius: 3px;
       }
 
-      .header {
-        text-align: center;
-        margin-bottom: 50px;
-        position: relative;
-        padding-bottom: 40px;
+      .sidebar::-webkit-scrollbar-thumb:hover {
+        background: var(--gray-400);
       }
 
-      .header::after {
-        content: "";
-        position: absolute;
-        bottom: 0;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 120px;
-        height: 4px;
-        /* Đổi gradient thành màu solid */
-        background: var(--primary);
-        border-radius: 0; /* Bỏ bo góc */
-        box-shadow: none;
+      /* --- Sidebar Header (Logo + Title) --- */
+      .sidebar-header {
+        padding: 20px 24px;
+        background: var(--white);
+        border-bottom: 1px solid var(--gray-200);
+        flex-shrink: 0;
       }
 
-      h1 {
-        font-family: "Source Sans Pro", "Nunito Sans", sans-serif;
-        color: var(--primary-dark); /* Màu chữ đặc */
-        font-size: 3.5em;
-        font-weight: 900;
-        margin-bottom: 15px;
-        /* Xóa hiệu ứng chữ gradient */
-        background: none;
-        -webkit-background-clip: unset;
-        -webkit-text-fill-color: unset;
-        background-clip: unset;
-        letter-spacing: -2px;
+      .sidebar-header h1 {
+        font-size: 1.5rem;
+        font-weight: 800;
+        color: var(--primary-dark);
+        letter-spacing: -0.5px;
+      }
+
+      .sidebar-header .subtitle {
+        font-size: 0.85rem;
+        color: var(--gray-500);
+        margin-top: 4px;
+      }
+
+      /* --- Input Form Section --- */
+      .input-section {
+        padding: 20px 24px;
+        background: var(--white);
+        border-bottom: 1px solid var(--gray-200);
+        flex-shrink: 0;
+      }
+
+      .input-group {
+        margin-bottom: 16px;
+      }
+
+      .input-group:last-child {
+        margin-bottom: 0;
+      }
+
+      .input-group label {
+        display: block;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: var(--gray-700);
+        margin-bottom: 6px;
         text-transform: uppercase;
-        animation: titleFloat 3s ease-in-out infinite;
-      }
-
-      @keyframes titleFloat {
-        0%,
-        100% {
-          transform: translateY(0px);
-        }
-        50% {
-          transform: translateY(-5px);
-        }
-      }
-
-      .subtitle {
-        color: var(--gray);
-        font-size: 1.2em;
-        font-weight: 500;
         letter-spacing: 0.5px;
       }
 
-      .main-layout {
-        display: grid;
-        grid-template-columns: 420px 1fr;
-        gap: 30px;
-        margin-top: 30px;
-        max-width: 100%;
-        overflow: hidden;
-      }
-
-      .route-form {
-        /* Nền trắng hoặc xanh rất nhạt */
-        background: #f1f8e9;
-        padding: 40px;
-        /* Bo góc nhẹ hoặc bỏ tùy ý, nhưng giữ theo theme cũ chỉ đổi màu */
-        border-radius: 4px;
-        margin-bottom: 30px;
-        border: 1px solid #c5e1a5;
-        box-shadow: 0 10px 20px rgba(46, 125, 50, 0.05);
-        position: relative;
-        transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-      }
-
-      .route-form::before {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 4px;
-        /* Màu solid */
-        background: var(--primary);
-        border-radius: 4px 4px 0 0;
-        box-shadow: none;
-      }
-
-      .route-form:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 15px 30px rgba(46, 125, 50, 0.1);
-      }
-
-      .route-form h3 {
-        font-family: "Source Sans Pro", "Nunito Sans", sans-serif;
-        color: var(--dark);
-        font-size: 1.8em;
-        font-weight: 700;
-        margin-bottom: 30px;
-        display: flex;
-        align-items: center;
-        gap: 15px;
-      }
-
-      .route-form h3::before {
-        content: "";
-        width: 6px;
-        height: 40px;
-        /* Màu solid */
-        background: var(--primary);
-        border-radius: 0; /* Vuông */
-        box-shadow: none;
-      }
-
-      .form-row {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 24px;
-        margin-bottom: 24px;
-      }
-
-      label {
-        margin-bottom: 10px;
-        font-weight: 600;
-        color: var(--dark);
-        font-size: 0.95em;
-        display: block;
-      }
-
-      input[type="text"],
-      input[type="number"] {
-        padding: 16px 20px;
-        border: 1px solid #bdbdbd;
-        /* Giữ bo góc nhẹ cho input cho dễ nhìn, hoặc chỉnh thành 0 nếu muốn vuông hết */
-        border-radius: 0;
-        font-size: 15px;
-        transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-        background: #ffffff;
-        font-family: inherit;
-        font-weight: 500;
+      .input-group input[type="text"],
+      .input-group input[type="number"] {
         width: 100%;
+        padding: 12px 16px;
+        border: 1px solid var(--gray-300);
+        border-radius: 8px;
+        font-size: 0.95rem;
+        font-family: inherit;
+        transition: all 0.2s ease;
+        background: var(--white);
       }
 
-      input:focus {
+      .input-group input:focus {
         outline: none;
         border-color: var(--primary);
-        background: white;
-        box-shadow: 0 0 0 2px rgba(46, 125, 50, 0.2);
-        transform: translateY(-2px);
+        box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
       }
 
-      input::placeholder {
-        color: #9e9e9e;
+      .input-group input::placeholder {
+        color: var(--gray-400);
       }
 
-      /* BUTTON: KHÔNG BO GÓC, KHÔNG GRADIENT */
-      button {
-        padding: 18px 45px;
-        /* Màu solid xanh */
-        background: var(--primary);
-        color: white;
-        border: none;
-        /* QUAN TRỌNG: Không bo góc */
-        border-radius: 0;
+      .input-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+
+      /* --- Advanced Settings Toggle --- */
+      .advanced-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 16px;
+        background: var(--gray-50);
+        border: 1px solid var(--gray-200);
+        border-radius: 8px;
         cursor: pointer;
-        font-size: 17px;
-        font-weight: 700;
+        margin-top: 16px;
         transition: all 0.2s ease;
-        width: 100%;
-        margin-top: 15px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* Shadow nhẹ kiểu flat */
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        position: relative;
+      }
+
+      .advanced-toggle:hover {
+        background: var(--gray-100);
+        border-color: var(--gray-300);
+      }
+
+      .advanced-toggle span {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--gray-700);
+      }
+
+      .advanced-toggle .arrow {
+        font-size: 0.8rem;
+        color: var(--gray-500);
+        transition: transform 0.3s ease;
+      }
+
+      .advanced-toggle.open .arrow {
+        transform: rotate(180deg);
+      }
+
+      /* --- Advanced Settings Panel --- */
+      .advanced-panel {
+        max-height: 0;
         overflow: hidden;
+        transition: max-height 0.3s ease;
       }
 
-      /* Xóa hiệu ứng lướt sáng (shine) gradient cũ */
-      button::before {
-        display: none;
+      .advanced-panel.open {
+        max-height: 600px;
       }
 
-      button:hover {
-        background: var(--primary-dark); /* Đổi màu khi hover thay vì scale */
-        transform: translateY(-2px);
-        box-shadow: 0 6px 10px rgba(0, 0, 0, 0.15);
+      .advanced-content {
+        padding: 16px 0 0 0;
       }
 
-      button:active {
+      .config-section {
+        background: var(--gray-50);
+        border: 1px solid var(--gray-200);
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 12px;
+      }
+
+      .config-section h4 {
+        font-size: 0.85rem;
+        font-weight: 700;
+        color: var(--gray-700);
+        margin-bottom: 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--gray-200);
+      }
+
+      .config-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+
+      .config-grid .input-group {
+        margin-bottom: 0;
+      }
+
+      .config-grid .input-group label {
+        font-size: 0.7rem;
+      }
+
+      .config-grid .input-group input {
+        padding: 10px 12px;
+        font-size: 0.85rem;
+      }
+
+      /* --- Priority Buttons --- */
+      .priority-section {
+        margin-top: 12px;
+      }
+
+      .priority-section h4 {
+        font-size: 0.85rem;
+        font-weight: 700;
+        color: var(--gray-700);
+        margin-bottom: 10px;
+      }
+
+      .priority-buttons {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      .priority-btn {
+        padding: 10px 12px;
+        background: var(--white);
+        border: 1px solid var(--gray-300);
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: var(--gray-700);
+        transition: all 0.2s ease;
+        font-family: inherit;
+      }
+
+      .priority-btn:hover {
+        border-color: var(--primary);
+        background: rgba(16, 185, 129, 0.05);
+      }
+
+      .priority-btn.active {
+        background: var(--primary);
+        color: var(--white);
+        border-color: var(--primary);
+      }
+
+      /* --- Filter Checkboxes --- */
+      .filter-section {
+        margin-top: 12px;
+      }
+
+      .filter-section h4 {
+        font-size: 0.85rem;
+        font-weight: 700;
+        color: var(--gray-700);
+        margin-bottom: 10px;
+      }
+
+      .filter-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .filter-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 12px;
+        background: var(--white);
+        border: 1px solid var(--gray-300);
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .filter-item:hover {
+        border-color: var(--primary);
+      }
+
+      .filter-item input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        accent-color: var(--primary);
+        cursor: pointer;
+      }
+
+      .filter-item label {
+        font-size: 0.8rem;
+        color: var(--gray-700);
+        cursor: pointer;
+        margin: 0;
+      }
+
+      /* --- Search Button --- */
+      .search-btn {
+        width: 100%;
+        padding: 14px 24px;
+        background: var(--primary);
+        color: var(--white);
+        border: none;
+        border-radius: 8px;
+        font-size: 1rem;
+        font-weight: 700;
+        cursor: pointer;
+        margin-top: 16px;
+        transition: all 0.2s ease;
+        font-family: inherit;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .search-btn:hover {
+        background: var(--primary-dark);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+      }
+
+      .search-btn:active {
         transform: translateY(0);
       }
 
-      button:disabled {
-        background: var(--gray);
+      .search-btn:disabled {
+        background: var(--gray-400);
         cursor: not-allowed;
         transform: none;
         box-shadow: none;
       }
 
-      .config-section {
-        /* Màu nền phẳng */
-        background: #e3f2fd; /* Xanh dương rất nhạt pha xanh lá hoặc giữ trắng */
-        background: #f1f8e9; /* Dùng lại xanh nhạt cho đồng bộ */
-        padding: 28px;
-        border-radius: 0;
-        margin-top: 25px;
-        border: 1px solid #c5e1a5;
-        box-shadow: none;
-        position: relative;
-      }
-
-      .config-section::before {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: 28px;
-        width: 50px;
-        height: 4px;
-        background: var(--primary);
-        border-radius: 0;
-        box-shadow: none;
-      }
-
-      .config-section h4 {
-        margin-bottom: 20px;
-        color: var(--primary-dark);
-        font-weight: 700;
-        font-size: 1.15em;
-      }
-
-      .config-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 18px;
-        margin-top: 18px;
-      }
-
-      .priority-section {
-        margin: 25px 0;
-        padding: 28px;
-        /* Màu nền phẳng vàng nhạt */
-        background: #fffde7;
-        backdrop-filter: none;
-        border-radius: 0;
-        border: 1px solid #fff59d;
-        box-shadow: none;
-        position: relative;
-      }
-
-      .priority-section::before {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: 28px;
-        width: 50px;
-        height: 4px;
-        background: var(--warning);
-        border-radius: 0;
-        box-shadow: none;
-      }
-
-      .priority-section h4 {
-        color: #f57f17;
-        margin-bottom: 20px;
-        font-weight: 700;
-        font-size: 1.15em;
-      }
-
-      .priority-buttons {
-        display: flex;
-        gap: 12px;
-        margin-top: 15px;
-      }
-
-      .priority-btn {
+      /* ===== RESULTS SECTION ===== */
+      .results-section {
         flex: 1;
-        padding: 16px 24px;
-        background: #ffffff;
-        border: 1px solid #e0e0e0;
-        /* Button này cũng không bo góc */
-        border-radius: 0;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        font-weight: 700;
-        font-size: 0.95em;
-        color: var(--dark);
-        position: relative;
-      }
-
-      .priority-btn:hover {
-        transform: translateY(-3px);
-        border-color: var(--primary);
-        background: #f1f8e9;
-      }
-
-      .priority-btn.active {
-        /* Active màu phẳng */
-        background: var(--primary);
-        color: white;
-        border-color: var(--primary);
-        box-shadow: 0 4px 10px rgba(46, 125, 50, 0.2);
-        transform: translateY(-2px);
-      }
-
-      .options {
-        display: flex;
-        gap: 24px;
-        margin: 25px 0;
-        flex-wrap: wrap;
-        padding: 28px;
-        /* Nền phẳng */
-        background: #fce4ec; /* Hồng nhạt */
-        background: #f1f8e9; /* Hoặc đồng bộ xanh */
-        border-radius: 0;
-        border: 1px solid #c5e1a5;
-        box-shadow: none;
-        position: relative;
-      }
-
-      .options::before {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: 28px;
-        width: 50px;
-        height: 4px;
-        background: var(--primary);
-        border-radius: 0;
-        box-shadow: none;
-      }
-
-      .options h4 {
-        width: 100%;
-        color: var(--primary-dark);
-        margin-bottom: 12px;
-        font-weight: 700;
-        font-size: 1.15em;
-      }
-
-      .options-row {
-        display: flex;
-        gap: 20px;
-        width: 100%;
-      }
-
-      .checkbox-group {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 14px 24px;
-        background: #ffffff;
-        border-radius: 0; /* Vuông */
-        cursor: pointer;
-        transition: all 0.3s ease;
-        flex: 1;
-        border: 1px solid #e0e0e0;
-      }
-
-      .checkbox-group:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
-        border-color: var(--primary);
-      }
-
-      .checkbox-group input[type="checkbox"] {
-        width: 22px;
-        height: 22px;
-        cursor: pointer;
-        accent-color: var(--primary);
-      }
-
-      .checkbox-group label {
-        margin: 0;
-        cursor: pointer;
-        font-weight: 600;
-        color: var(--dark);
-      }
-
-      .sidebar {
-        background: #ffffff;
-        padding: 28px;
-        border-radius: 0;
-        max-height: 800px;
         overflow-y: auto;
-        border: 1px solid #e0e0e0;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
-        min-width: 0;
+        padding: 16px 24px;
       }
 
-      .sidebar::-webkit-scrollbar {
-        width: 8px;
-      }
-
-      .sidebar::-webkit-scrollbar-track {
-        background: #f1f1f1;
-      }
-
-      .sidebar::-webkit-scrollbar-thumb {
-        background: var(--secondary); /* Màu solid */
-        border-radius: 4px;
-      }
-
-      .sidebar h3 {
-        font-family: "Source Sans Pro", "Nunito Sans", sans-serif;
-        color: var(--dark);
-        font-size: 1.4em;
-        font-weight: 700;
-        margin-bottom: 24px;
-        padding-bottom: 16px;
-        border-bottom: 3px solid var(--primary);
-        position: relative;
-      }
-
-      .sidebar h3::after {
-        content: "";
-        position: absolute;
-        bottom: -3px;
-        left: 0;
-        width: 60px;
-        height: 3px;
-        background: var(--primary-dark);
-        border-radius: 0;
-      }
-
-      .route-list-item {
-        background: #ffffff;
-        padding: 24px;
-        margin-bottom: 18px;
-        border-radius: 0;
-        border: 1px solid #e0e0e0;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        position: relative;
-        overflow: hidden;
-      }
-
-      .route-list-item::before {
-        content: "";
-        position: absolute;
-        left: 0;
-        top: 0;
-        height: 100%;
-        width: 4px;
-        background: #bdbdbd;
-        transition: all 0.3s;
-      }
-
-      .route-list-item:hover {
-        transform: translateX(8px);
-        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
-        border-color: var(--primary);
-      }
-
-      .route-list-item:hover::before {
+      .results-section::-webkit-scrollbar {
         width: 6px;
-        background: var(--primary);
-        box-shadow: none;
       }
 
-      .route-list-item.active {
-        border-color: var(--primary);
-        background: #f1f8e9; /* Xanh rất nhạt */
-        box-shadow: none;
+      .results-section::-webkit-scrollbar-track {
+        background: var(--gray-100);
       }
 
-      .route-list-item.active::before {
-        background: var(--primary);
-        width: 6px;
-        box-shadow: none;
+      .results-section::-webkit-scrollbar-thumb {
+        background: var(--gray-300);
+        border-radius: 3px;
       }
 
-      .route-list-item.best {
-        border-color: var(--success);
-        background: #e8f5e9;
-        box-shadow: none;
+      .results-section::-webkit-scrollbar-thumb:hover {
+        background: var(--gray-400);
       }
 
-      .route-list-item.best::before {
-        background: var(--success);
-        box-shadow: none;
-      }
-
-      .route-title {
+      .results-header {
+        font-size: 0.9rem;
         font-weight: 700;
-        color: var(--dark);
-        margin-bottom: 16px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        font-size: 1.1em;
+        color: var(--gray-700);
+        margin-bottom: 12px;
+        padding-bottom: 8px;
+        border-bottom: 2px solid var(--primary);
       }
 
-      .route-badge {
-        padding: 8px 18px;
-        border-radius: 0; /* Badge vuông luôn cho đồng bộ */
-        font-size: 0.7em;
-        font-weight: 700;
-        background: var(--success);
-        color: white;
-        box-shadow: none;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        animation: none; /* Bỏ pulse animation cho đỡ rối */
-      }
-
-      .route-metrics-small {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 12px;
-        font-size: 0.9em;
-      }
-
-      .route-metrics-small > div {
-        background: #ffffff;
-        padding: 14px;
-        border-radius: 0;
-        text-align: center;
-        border: 1px solid #e0e0e0;
-        transition: all 0.3s;
-      }
-
-      .route-metrics-small > div:hover {
-        transform: translateY(-2px);
-        border-color: var(--primary);
-      }
-
-      .route-metrics-small .label {
-        font-size: 0.75em;
-        color: var(--gray);
-        margin-bottom: 6px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-      }
-
-      .route-metrics-small .value {
-        font-weight: 800;
-        color: var(--primary);
-        font-size: 1.2em;
-      }
-
-      .chart-container {
-        margin: 24px 0;
-        text-align: center;
-        width: 100%;
-        overflow: hidden;
-        border-radius: 0;
-      }
-
-      .chart-container img {
-        max-width: 100%;
-        height: auto;
-        border-radius: 0;
-        box-shadow: none;
-        border: 1px solid #e0e0e0;
-        display: block;
-        margin: 0 auto;
-      }
-
-      .main-content {
-        display: flex;
-        flex-direction: column;
-        gap: 24px;
-        min-width: 0;
-        overflow: hidden;
-      }
-
-      .charts-section {
-        background: #ffffff;
-        padding: 32px;
-        border-radius: 0;
-        border: 1px solid #e0e0e0;
-        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.05);
-        width: 100%;
-        overflow: hidden;
-      }
-
-      #map {
-        width: 100%;
-        max-width: 100%;
-        height: 600px;
-        border-radius: 0; /* Map vuông */
-        border: 1px solid #e0e0e0;
-        background: #f8f9fa;
-        overflow: hidden;
-        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.05);
-        transition: all 0.3s ease;
-      }
-
-      #map:hover {
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-        border-color: var(--primary-light);
-        transform: translateY(-2px);
-      }
-
-      .loading {
-        text-align: center;
-        padding: 60px;
+      /* --- Loading State --- */
+      .loading-state {
         display: none;
-        background: #ffffff;
-        border-radius: 0;
-        border: 1px solid #e0e0e0;
-        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.05);
+        text-align: center;
+        padding: 40px 20px;
+      }
+
+      .loading-state.show {
+        display: block;
       }
 
       .spinner {
-        border: 5px solid #e0e0e0;
-        border-top: 5px solid var(--primary);
+        width: 48px;
+        height: 48px;
+        border: 4px solid var(--gray-200);
+        border-top-color: var(--primary);
         border-radius: 50%;
-        width: 70px;
-        height: 70px;
         animation: spin 1s linear infinite;
-        margin: 0 auto 30px;
-        position: relative;
+        margin: 0 auto 20px;
       }
 
       @keyframes spin {
-        0% {
-          transform: rotate(0deg);
-        }
-        100% {
+        to {
           transform: rotate(360deg);
         }
       }
 
-      .spinner::after {
-        display: none; /* Bỏ hiệu ứng spinner phức tạp cũ */
-      }
-
-      .loading p {
-        color: var(--gray);
-        font-weight: 600;
-        font-size: 1.2em;
-        margin-top: 10px;
+      .loading-state p {
+        color: var(--gray-600);
+        font-weight: 500;
+        margin-bottom: 8px;
       }
 
       .loading-timer {
-        margin-top: 15px;
-        font-size: 0.9em;
+        font-size: 0.9rem;
         color: var(--primary);
         font-weight: 700;
       }
 
       .loading-hint {
-        margin-top: 20px;
-        padding: 15px;
-        background: #fff8e1;
-        border-radius: 0;
-        font-size: 0.85em;
-        color: #f57f17;
-        line-height: 1.6;
-      }
-
-      .no-results {
-        text-align: center;
-        padding: 60px;
-        color: var(--gray);
-        display: none;
-        background: #ffebee;
-        backdrop-filter: none;
-        border-radius: 0;
-        border: 1px solid #ef9a9a;
-        box-shadow: none;
-      }
-
-      .no-results h3 {
-        font-size: 1.5em;
-        margin-bottom: 16px;
-        color: var(--danger);
-        font-weight: 700;
-      }
-
-      .no-results p {
-        color: var(--gray);
-        font-size: 1.05em;
-      }
-
-      .stops-list {
         margin-top: 16px;
-        font-size: 0.85em;
+        padding: 12px;
+        background: #fef3c7;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        color: #92400e;
+        line-height: 1.5;
       }
 
-      .stops-list strong {
-        display: block;
-        margin-bottom: 8px;
-        color: var(--dark);
+      /* --- Loading Steps --- */
+      .loading-steps {
+        margin-top: 20px;
+        text-align: left;
+        max-width: 300px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+
+      .loading-step {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--gray-100);
+        font-size: 0.85rem;
+        color: var(--gray-400);
+        transition: all 0.3s ease;
+      }
+
+      .loading-step:last-child {
+        border-bottom: none;
+      }
+
+      .loading-step.active {
+        color: var(--primary);
         font-weight: 600;
       }
 
-      .stops-list-item {
-        padding: 12px 14px;
-        background: #fffde7;
-        margin: 8px 0;
-        border-radius: 0;
-        border-left: 4px solid var(--warning);
-        font-weight: 500;
-        transition: all 0.3s;
+      .loading-step.completed {
+        color: var(--primary-dark);
       }
 
-      .stops-list-item:hover {
-        transform: translateX(6px);
-        background: #fff9c4;
+      .loading-step.error {
+        color: var(--alert);
       }
 
-      .charts-section h3 {
-        font-family: "Source Sans Pro", "Nunito Sans", sans-serif;
-        color: var(--dark);
-        margin-bottom: 28px;
+      .step-indicator {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.7rem;
         font-weight: 700;
-        font-size: 1.4em;
-        padding-bottom: 16px;
-        border-bottom: 3px solid var(--primary);
+        flex-shrink: 0;
+        background: var(--gray-200);
+        color: var(--gray-500);
+      }
+
+      .loading-step.active .step-indicator {
+        background: var(--primary);
+        color: var(--white);
+        animation: pulse-indicator 1.5s infinite;
+      }
+
+      .loading-step.completed .step-indicator {
+        background: var(--primary-dark);
+        color: var(--white);
+      }
+
+      .loading-step.error .step-indicator {
+        background: var(--alert);
+        color: var(--white);
+      }
+
+      @keyframes pulse-indicator {
+        0%,
+        100% {
+          transform: scale(1);
+          opacity: 1;
+        }
+        50% {
+          transform: scale(1.1);
+          opacity: 0.8;
+        }
+      }
+
+      .step-text {
+        flex: 1;
+      }
+
+      .step-status {
+        font-size: 0.75rem;
+        color: var(--gray-400);
+        margin-left: auto;
+      }
+
+      .loading-step.active .step-status {
+        color: var(--primary);
+      }
+
+      .loading-step.completed .step-status {
+        color: var(--primary-dark);
+      }
+
+      .loading-step.error .step-status {
+        color: var(--alert);
+      }
+
+      /* --- Error State --- */
+      .error-state {
+        display: none;
+        padding: 24px 20px;
+      }
+
+      .error-state.show {
+        display: block;
+      }
+
+      .error-box {
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 16px;
+      }
+
+      .error-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+
+      .error-icon {
+        width: 40px;
+        height: 40px;
+        background: var(--alert);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--white);
+        font-weight: 700;
+        font-size: 1.2rem;
+        flex-shrink: 0;
+      }
+
+      .error-title {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #991b1b;
+      }
+
+      .error-message {
+        font-size: 0.9rem;
+        color: #7f1d1d;
+        line-height: 1.6;
+        margin-bottom: 16px;
+        white-space: pre-wrap;
+      }
+
+      .error-details {
+        background: #fee2e2;
+        border-radius: 8px;
+        padding: 12px;
+        font-size: 0.8rem;
+        color: #991b1b;
+        font-family: monospace;
+        max-height: 120px;
+        overflow-y: auto;
+        margin-bottom: 16px;
+      }
+
+      .error-suggestions {
+        background: #fffbeb;
+        border: 1px solid #fde68a;
+        border-radius: 8px;
+        padding: 16px;
+      }
+
+      .error-suggestions h4 {
+        font-size: 0.85rem;
+        font-weight: 700;
+        color: #92400e;
+        margin-bottom: 10px;
+      }
+
+      .error-suggestions ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+
+      .error-suggestions li {
+        font-size: 0.8rem;
+        color: #78350f;
+        padding: 6px 0;
+        padding-left: 20px;
         position: relative;
       }
 
-      .charts-section h3::after {
-        content: "";
+      .error-suggestions li::before {
+        content: "→";
         position: absolute;
-        bottom: -3px;
         left: 0;
-        width: 60px;
-        height: 3px;
+        color: #f59e0b;
+      }
+
+      .retry-btn {
+        width: 100%;
+        padding: 12px 20px;
+        background: var(--primary);
+        color: var(--white);
+        border: none;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-family: inherit;
+        margin-top: 16px;
+      }
+
+      .retry-btn:hover {
         background: var(--primary-dark);
-        border-radius: 0;
+        transform: translateY(-1px);
       }
 
-      .chart-info {
-        background: #e3f2fd;
-        padding: 15px 20px;
-        border-radius: 0;
-        margin-top: 15px;
-        border-left: 4px solid var(--primary);
-        font-size: 0.9em;
-        color: var(--gray);
+      /* --- No Results State --- */
+      .no-results-state {
+        display: none;
+        text-align: center;
+        padding: 40px 20px;
       }
 
-      .chart-info strong {
-        color: var(--dark);
+      .no-results-state.show {
         display: block;
+      }
+
+      .no-results-state h3 {
+        color: var(--alert);
+        font-size: 1.1rem;
         margin-bottom: 8px;
       }
 
-      @media (max-width: 1200px) {
-        .main-layout {
-          grid-template-columns: 380px 1fr;
+      .no-results-state p {
+        color: var(--gray-500);
+        font-size: 0.9rem;
+      }
+
+      /* ===== ROUTE CARDS ===== */
+      .route-card {
+        background: var(--white);
+        border: 1px solid var(--gray-200);
+        border-radius: 12px;
+        margin-bottom: 16px;
+        overflow: hidden;
+        transition: all 0.2s ease;
+        cursor: pointer;
+      }
+
+      .route-card:hover {
+        border-color: var(--primary);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      }
+
+      .route-card.active {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+      }
+
+      .route-card.best {
+        border-color: var(--primary);
+        background: linear-gradient(
+          135deg,
+          rgba(16, 185, 129, 0.03),
+          rgba(16, 185, 129, 0.08)
+        );
+      }
+
+      /* --- Card Header --- */
+      .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px;
+        border-bottom: 1px solid var(--gray-100);
+      }
+
+      .route-name {
+        font-size: 1rem;
+        font-weight: 700;
+        color: var(--dark);
+      }
+
+      .badge {
+        padding: 4px 10px;
+        background: #d1fae5;
+        color: #065f46;
+        font-size: 0.7rem;
+        font-weight: 700;
+        border-radius: 20px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      /* --- Stats Grid --- */
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1px;
+        background: var(--gray-100);
+        border-bottom: 1px solid var(--gray-100);
+      }
+
+      .stat-item {
+        background: var(--white);
+        padding: 12px 8px;
+        text-align: center;
+      }
+
+      .stat-label {
+        font-size: 0.65rem;
+        color: var(--gray-500);
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        margin-bottom: 4px;
+      }
+
+      .stat-value {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: var(--primary-dark);
+      }
+
+      /* --- Cost Summary --- */
+      .cost-summary {
+        padding: 12px 16px;
+        background: #fffbeb;
+        border-bottom: 1px solid #fde68a;
+      }
+
+      /* --- Filter Feedback Badges --- */
+      .filter-feedback-container {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 10px 16px;
+        background: var(--gray-50);
+        border-bottom: 1px solid var(--gray-100);
+      }
+
+      .filter-badge {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.78rem;
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-weight: 600;
+      }
+
+      .filter-badge.success {
+        background: #ecfdf5;
+        color: #047857;
+        border: 1px solid #a7f3d0;
+      }
+
+      .filter-badge.warning {
+        background: #fffbeb;
+        color: #b45309;
+        border: 1px solid #fde68a;
+      }
+
+      .filter-badge.info {
+        background: #eff6ff;
+        color: #1d4ed8;
+        border: 1px solid #bfdbfe;
+      }
+
+      .filter-badge .badge-icon {
+        font-size: 1rem;
+        flex-shrink: 0;
+      }
+
+      .cost-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 0.85rem;
+        margin-bottom: 6px;
+      }
+
+      .cost-row:last-child {
+        margin-bottom: 0;
+        padding-top: 8px;
+        border-top: 1px solid #fde68a;
+        font-weight: 700;
+      }
+
+      .cost-label {
+        color: var(--gray-600);
+      }
+
+      .cost-value {
+        font-weight: 600;
+        color: var(--gray-700);
+      }
+
+      .cost-value.total {
+        color: var(--warning);
+        font-size: 1rem;
+      }
+
+      /* --- Card Tabs --- */
+      .card-tabs {
+        display: flex;
+        border-bottom: 1px solid var(--gray-200);
+        background: var(--gray-50);
+      }
+
+      .card-tab {
+        flex: 1;
+        padding: 10px 12px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: var(--gray-500);
+        text-align: center;
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        transition: all 0.2s ease;
+        background: none;
+        border-top: none;
+        border-left: none;
+        border-right: none;
+        font-family: inherit;
+      }
+
+      .card-tab:hover {
+        color: var(--gray-700);
+        background: var(--gray-100);
+      }
+
+      .card-tab.active {
+        color: var(--primary);
+        border-bottom-color: var(--primary);
+        background: var(--white);
+      }
+
+      /* --- Tab Content --- */
+      .tab-content {
+        display: none;
+        padding: 16px;
+        max-height: 300px;
+        overflow-y: auto;
+      }
+
+      .tab-content.active {
+        display: block;
+      }
+
+      .tab-content::-webkit-scrollbar {
+        width: 4px;
+      }
+
+      .tab-content::-webkit-scrollbar-thumb {
+        background: var(--gray-300);
+        border-radius: 2px;
+      }
+
+      /* --- Overview Tab --- */
+      .overview-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--gray-100);
+        font-size: 0.85rem;
+      }
+
+      .overview-item:last-child {
+        border-bottom: none;
+      }
+
+      .overview-label {
+        color: var(--gray-600);
+      }
+
+      .overview-value {
+        font-weight: 600;
+        color: var(--dark);
+      }
+
+      .reason-box {
+        margin-top: 12px;
+        padding: 12px;
+        background: rgba(16, 185, 129, 0.08);
+        border-left: 3px solid var(--primary);
+        border-radius: 0 6px 6px 0;
+      }
+
+      .reason-title {
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: var(--primary-dark);
+        margin-bottom: 6px;
+      }
+
+      .reason-list {
+        font-size: 0.8rem;
+        color: var(--primary-dark);
+        line-height: 1.6;
+      }
+
+      /* --- Charging Tab --- */
+      .charging-timeline {
+        position: relative;
+      }
+
+      .charging-item {
+        display: flex;
+        gap: 12px;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--gray-100);
+        position: relative;
+      }
+
+      .charging-item:last-child {
+        border-bottom: none;
+      }
+
+      .charging-marker {
+        width: 32px;
+        height: 32px;
+        background: var(--warning);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--white);
+        font-weight: 700;
+        font-size: 0.8rem;
+        flex-shrink: 0;
+      }
+
+      .charging-info {
+        flex: 1;
+      }
+
+      .charging-name {
+        font-weight: 600;
+        color: var(--dark);
+        font-size: 0.9rem;
+        margin-bottom: 4px;
+      }
+
+      .charging-details {
+        font-size: 0.8rem;
+        color: var(--gray-500);
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .charging-cost {
+        font-weight: 600;
+        color: var(--primary-dark);
+      }
+
+      .no-charging {
+        text-align: center;
+        padding: 20px;
+        color: var(--primary);
+        font-weight: 600;
+        background: rgba(16, 185, 129, 0.08);
+        border-radius: 8px;
+      }
+
+      /* --- Travel Events Timeline --- */
+      .travel-events-timeline {
+        position: relative;
+        padding-left: 24px;
+      }
+
+      .travel-events-timeline::before {
+        content: "";
+        position: absolute;
+        left: 10px;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: linear-gradient(
+          to bottom,
+          var(--primary),
+          var(--warning),
+          var(--secondary)
+        );
+      }
+
+      .travel-event {
+        position: relative;
+        padding: 12px 0 12px 20px;
+        border-bottom: 1px solid var(--gray-100);
+      }
+
+      .travel-event:last-child {
+        border-bottom: none;
+      }
+
+      .event-marker {
+        position: absolute;
+        left: -20px;
+        top: 14px;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        z-index: 1;
+        border: 2px solid var(--white);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+
+      .event-marker.toll {
+        background: #ef4444;
+        color: var(--white);
+      }
+
+      .event-marker.ferry {
+        background: #3b82f6;
+        color: var(--white);
+      }
+
+      .event-marker.charging {
+        background: #f59e0b;
+        color: var(--white);
+      }
+
+      .event-marker.highway_stop {
+        background: #10b981;
+        color: var(--white);
+      }
+
+      .event-content {
+        background: var(--gray-50);
+        border-radius: 8px;
+        padding: 10px 12px;
+        transition: all 0.2s ease;
+      }
+
+      .travel-event:hover .event-content {
+        background: var(--gray-100);
+      }
+
+      .event-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 4px;
+      }
+
+      .event-name {
+        font-weight: 600;
+        font-size: 0.85rem;
+        color: var(--dark);
+      }
+
+      .event-cost {
+        font-weight: 700;
+        font-size: 0.85rem;
+        color: var(--alert);
+        white-space: nowrap;
+        margin-left: 8px;
+      }
+
+      .event-cost.free {
+        color: var(--primary);
+      }
+
+      .event-meta {
+        display: flex;
+        gap: 12px;
+        font-size: 0.75rem;
+        color: var(--gray-500);
+        flex-wrap: wrap;
+      }
+
+      .event-km {
+        font-weight: 600;
+        color: var(--primary-dark);
+      }
+
+      .event-detail {
+        color: var(--gray-600);
+      }
+
+      .no-events {
+        text-align: center;
+        padding: 20px;
+        color: var(--primary);
+        font-weight: 600;
+        background: rgba(16, 185, 129, 0.08);
+        border-radius: 8px;
+      }
+
+      .free-route-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: #d1fae5;
+        color: #065f46;
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        margin: 8px 0;
+      }
+
+      /* --- Infeasibility Error Card --- */
+      .infeasibility-card {
+        background: linear-gradient(135deg, #fef2f2, #fee2e2);
+        border: 1px solid #fecaca;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 16px;
+      }
+
+      .infeasibility-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+
+      .infeasibility-icon {
+        width: 48px;
+        height: 48px;
+        background: linear-gradient(135deg, #ef4444, #dc2626);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        flex-shrink: 0;
+      }
+
+      .infeasibility-title {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #991b1b;
+        margin-bottom: 4px;
+      }
+
+      .infeasibility-subtitle {
+        font-size: 0.85rem;
+        color: #7f1d1d;
+      }
+
+      .infeasibility-location {
+        background: #fee2e2;
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 12px;
+      }
+
+      .location-title {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #991b1b;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 8px;
+      }
+
+      .location-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      .location-item {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .location-label {
+        font-size: 0.7rem;
+        color: #b91c1c;
+      }
+
+      .location-value {
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: #7f1d1d;
+      }
+
+      .battery-visual {
+        background: #fee2e2;
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 12px;
+      }
+
+      .battery-bar-container {
+        height: 24px;
+        background: #fecaca;
+        border-radius: 12px;
+        overflow: hidden;
+        position: relative;
+        margin-top: 8px;
+      }
+
+      .battery-bar-current {
+        height: 100%;
+        background: linear-gradient(90deg, #10b981, #34d399);
+        border-radius: 12px 0 0 12px;
+        transition: width 0.5s ease;
+        position: relative;
+        z-index: 2;
+      }
+
+      /* === ANIMATION GẠCH CHÉO CHO PHẦN PIN THIẾU === */
+      @keyframes stripe-move {
+        0% {
+          background-position: 0 0;
+        }
+        100% {
+          background-position: 28px 0;
         }
       }
 
-      @media (max-width: 992px) {
-        .main-layout {
-          grid-template-columns: 1fr;
+      .battery-bar-needed {
+        position: absolute;
+        top: 0;
+        height: 100%;
+        background: repeating-linear-gradient(
+          45deg,
+          #fca5a5,
+          #fca5a5 5px,
+          #fecaca 5px,
+          #fecaca 10px
+        );
+        background-size: 14px 14px;
+        animation: stripe-move 0.8s linear infinite;
+        border-left: 2px dashed #dc2626;
+        border-radius: 0 12px 12px 0;
+        opacity: 0.85;
+      }
+
+      .battery-labels {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.75rem;
+        color: #991b1b;
+        margin-top: 8px;
+      }
+
+      /* === SUGGESTION CHIPS (Action Buttons) === */
+      .suggestion-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .suggestion-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 14px;
+        background: var(--white);
+        border: 1px solid var(--gray-300);
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: var(--gray-700);
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .suggestion-chip:hover {
+        border-color: var(--primary);
+        color: var(--primary-dark);
+        background: rgba(16, 185, 129, 0.08);
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(16, 185, 129, 0.15);
+      }
+
+      .suggestion-chip.primary {
+        background: var(--primary);
+        color: var(--white);
+        border-color: var(--primary);
+      }
+
+      .suggestion-chip.primary:hover {
+        background: var(--primary-dark);
+        border-color: var(--primary-dark);
+        color: var(--white);
+      }
+
+      /* === ERROR TYPE COLOR CODING === */
+      .error-state[data-type="network"] .error-icon {
+        background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+      }
+      .error-state[data-type="server"] .error-icon {
+        background: linear-gradient(135deg, #f59e0b, #d97706);
+      }
+      .error-state[data-type="logic"] .error-icon {
+        background: linear-gradient(135deg, #ef4444, #dc2626);
+      }
+      .error-state[data-type="timeout"] .error-icon {
+        background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+      }
+
+      /* === REASON BOX (Chi tiết lỗi) === */
+      .reason-box {
+        background: #fff7ed;
+        border-left: 4px solid #f97316;
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin: 12px 0;
+      }
+
+      .reason-box.error {
+        background: #fef2f2;
+        border-left-color: #ef4444;
+      }
+
+      .reason-title {
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #c2410c;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 6px;
+      }
+
+      .reason-box.error .reason-title {
+        color: #b91c1c;
+      }
+
+      .reason-text {
+        font-size: 0.85rem;
+        color: #9a3412;
+        line-height: 1.5;
+      }
+
+      .reason-box.error .reason-text {
+        color: #991b1b;
+      }
+
+      /* === PROGRESS BAR (Tiến độ chuyến đi) === */
+      .progress-visual {
+        background: #fee2e2;
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 12px;
+      }
+
+      .progress-bar-container {
+        height: 8px;
+        background: #fecaca;
+        border-radius: 4px;
+        overflow: hidden;
+        margin: 8px 0;
+      }
+
+      .progress-bar-filled {
+        height: 100%;
+        background: linear-gradient(90deg, #10b981, #f59e0b);
+        border-radius: 4px;
+        transition: width 0.5s ease;
+      }
+
+      .progress-labels {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.75rem;
+        color: #991b1b;
+      }
+
+      /* --- Directions Tab --- */
+      .direction-item {
+        display: flex;
+        gap: 12px;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--gray-100);
+      }
+
+      .direction-item:last-child {
+        border-bottom: none;
+      }
+
+      .direction-step {
+        width: 24px;
+        height: 24px;
+        background: var(--secondary);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--white);
+        font-size: 0.7rem;
+        font-weight: 700;
+        flex-shrink: 0;
+      }
+
+      .direction-info {
+        flex: 1;
+      }
+
+      .direction-text {
+        font-size: 0.85rem;
+        color: var(--dark);
+        margin-bottom: 4px;
+      }
+
+      .direction-meta {
+        font-size: 0.75rem;
+        color: var(--gray-500);
+      }
+
+      .direction-more {
+        text-align: center;
+        padding: 10px;
+        color: var(--gray-500);
+        font-size: 0.8rem;
+        font-style: italic;
+      }
+
+      /* --- Show More/Less Button --- */
+      .show-more-btn {
+        width: 100%;
+        padding: 12px 16px;
+        background: var(--gray-100);
+        border: 1px solid var(--gray-300);
+        border-radius: 8px;
+        color: var(--primary-dark);
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-family: inherit;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        margin-top: 8px;
+      }
+
+      .show-more-btn:hover {
+        background: var(--primary);
+        color: var(--white);
+        border-color: var(--primary);
+      }
+
+      .direction-item.hidden-step {
+        display: none;
+      }
+
+      .direction-item.hidden-step.show {
+        display: flex;
+      }
+
+      /* --- Comparison Context (for non-best routes) --- */
+      .comparison-context {
+        padding: 8px 16px;
+        background: var(--gray-100);
+        border-bottom: 1px solid var(--gray-200);
+        font-size: 0.8rem;
+        color: var(--gray-600);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .comparison-item {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .comparison-item.worse {
+        color: var(--alert);
+      }
+
+      .comparison-item.better {
+        color: var(--primary);
+      }
+
+      .comparison-item span:first-child {
+        font-size: 0.75rem;
+      }
+
+      /* --- Segments Tab --- */
+      .segment-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--gray-100);
+      }
+
+      .segment-item:last-child {
+        border-bottom: none;
+      }
+
+      .segment-number {
+        width: 24px;
+        height: 24px;
+        background: var(--gray-200);
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: var(--gray-600);
+        margin-right: 10px;
+      }
+
+      .segment-name {
+        flex: 1;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--dark);
+      }
+
+      .segment-stats {
+        text-align: right;
+      }
+
+      .segment-distance {
+        font-size: 0.85rem;
+        font-weight: 700;
+        color: var(--primary-dark);
+      }
+
+      .segment-duration {
+        font-size: 0.75rem;
+        color: var(--gray-500);
+      }
+
+      /* ===== MAP CONTAINER ===== */
+      .map-container {
+        flex: 1;
+        position: relative;
+        background: var(--gray-200);
+      }
+
+      #map {
+        width: 100%;
+        height: 100%;
+      }
+
+      .map-placeholder {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+        color: var(--gray-500);
+      }
+
+      .map-placeholder h3 {
+        font-size: 1.2rem;
+        margin-bottom: 8px;
+      }
+
+      .map-placeholder p {
+        font-size: 0.9rem;
+      }
+
+      /* --- Chart Overlay --- */
+      .chart-overlay {
+        position: absolute;
+        bottom: 20px;
+        left: 20px;
+        right: 20px;
+        background: var(--white);
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        max-height: 200px;
+        overflow: hidden;
+        display: none;
+      }
+
+      .chart-overlay.show {
+        display: block;
+      }
+
+      .chart-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--gray-200);
+      }
+
+      .chart-title {
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: var(--dark);
+      }
+
+      .chart-close {
+        background: none;
+        border: none;
+        font-size: 1.2rem;
+        color: var(--gray-500);
+        cursor: pointer;
+        padding: 4px;
+      }
+
+      .chart-close:hover {
+        color: var(--dark);
+      }
+
+      .chart-content {
+        padding: 12px 16px;
+        text-align: center;
+      }
+
+      .chart-content img {
+        max-width: 100%;
+        max-height: 140px;
+        border-radius: 6px;
+      }
+
+      /* ===== RESPONSIVE ===== */
+      @media (max-width: 1024px) {
+        .app-container {
+          flex-direction: column;
         }
 
         .sidebar {
-          max-height: 500px;
+          width: 100%;
+          min-width: 100%;
+          height: auto;
+          max-height: 50vh;
         }
 
-        h1 {
-          font-size: 2.5em;
+        .map-container {
+          min-height: 50vh;
+        }
+
+        .results-section {
+          max-height: 200px;
+        }
+
+        .stats-grid {
+          grid-template-columns: repeat(2, 1fr);
         }
       }
 
-      @media (max-width: 768px) {
-        body {
-          padding: 12px;
-        }
-
-        .container {
-          padding: 30px 20px;
-          border-radius: 0;
-        }
-
-        h1 {
-          font-size: 2em;
-        }
-
-        .form-row {
+      @media (max-width: 640px) {
+        .input-row {
           grid-template-columns: 1fr;
         }
 
         .config-grid {
-          grid-template-columns: 1fr 1fr;
+          grid-template-columns: 1fr;
         }
 
         .priority-buttons {
-          flex-direction: column;
+          grid-template-columns: 1fr;
         }
 
-        .options-row {
-          flex-direction: column;
-          gap: 12px;
+        .sidebar-header {
+          padding: 16px 20px;
         }
-      }
 
-      .route-content {
-        padding: 20px;
-        background: #f8f9fa;
-        border-radius: 0;
-      }
+        .input-section {
+          padding: 16px 20px;
+        }
 
-      .route-toggle {
-        transition: transform 0.3s ease;
-      }
-
-      .route-toggle.rotate {
-        transform: rotate(180deg);
-      }
-
-      .chart-container {
-        background: white;
-        padding: 15px;
-        border-radius: 0;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        .results-section {
+          padding: 12px 20px;
+        }
       }
     </style>
   </head>
   <body>
-    <div class="container">
-      <div class="header">
-        <h1>Hệ thống tối ưu lộ trình</h1>
-        <p class="subtitle">Tìm lộ trình tối ưu cho xe điện</p>
-      </div>
+    <div class="app-container">
+      <!-- ===== LEFT SIDEBAR ===== -->
+      <div class="sidebar">
+        <!-- Sidebar Header -->
+        <div class="sidebar-header">
+          <h1>EV Router</h1>
+          <p class="subtitle">Hệ thống tối ưu lộ trình xe điện</p>
+        </div>
 
-      <div class="route-form">
-        <h3>Thông tin hành trình</h3>
-
-        <div class="form-row">
-          <div class="form-group">
-            <label> Điểm xuất phát:</label>
+        <!-- Input Section -->
+        <div class="input-section">
+          <div class="input-group">
+            <label>Điểm xuất phát</label>
             <input
               type="text"
               id="start"
               placeholder="VD: Trường Đại học Sư phạm TP.HCM"
             />
           </div>
-          <div class="form-group">
-            <label> Điểm đến:</label>
+
+          <div class="input-group">
+            <label>Điểm đến</label>
             <input type="text" id="end" placeholder="VD: Phân hiệu Gia Lai" />
           </div>
-        </div>
 
-        <div class="config-section">
-          <h4 style="margin-bottom: 10px">Thông số xe điện</h4>
-          <div class="config-grid">
-            <div class="form-group">
-              <label> Pin hiện tại (%):</label>
-              <input
-                type="number"
-                id="battery"
-                value="100"
-                min="10"
-                max="100"
-              />
-            </div>
-            <div class="form-group">
-              <label>Mức tiêu thụ (kWh/100km):</label>
-              <input
-                type="number"
-                id="consumption"
-                value="{{ ev_config.consumption }}"
-                step="0.1"
-              />
-            </div>
-            <div class="form-group">
-              <label>Dung lượng pin (kWh):</label>
-              <input
-                type="number"
-                id="capacity"
-                value="{{ ev_config.battery_capacity }}"
-                step="1"
-              />
-            </div>
-            <div class="form-group">
-              <label>Ngưỡng pin an toàn (%):</label>
-              <input
-                type="number"
-                id="min_battery"
-                value="{{ ev_config.min_battery }}"
-                min="5"
-                max="30"
-              />
-            </div>
-            <div class="form-group">
-              <label>Số km còn đi được:</label>
-              <input
-                type="number"
-                id="km_remaining"
-                value="460"
-                readonly
-                style="background: #f0f0f0"
-              />
+          <!-- Advanced Settings Toggle -->
+          <div class="advanced-toggle" onclick="toggleAdvanced()">
+            <span>Cấu hình xe và tùy chọn</span>
+            <span class="arrow">▼</span>
+          </div>
+
+          <!-- Advanced Settings Panel -->
+          <div class="advanced-panel" id="advancedPanel">
+            <div class="advanced-content">
+              <!-- EV Configuration -->
+              <div class="config-section">
+                <h4>Thông số xe điện</h4>
+                <div class="config-grid">
+                  <div class="input-group">
+                    <label>Pin hiện tại (%)</label>
+                    <input
+                      type="number"
+                      id="battery"
+                      value="100"
+                      min="10"
+                      max="100"
+                    />
+                  </div>
+                  <div class="input-group">
+                    <label>Dung lượng pin (kWh)</label>
+                    <input
+                      type="number"
+                      id="capacity"
+                      value="{{ ev_config.battery_capacity }}"
+                      step="1"
+                    />
+                  </div>
+                  <div class="input-group">
+                    <label>Tiêu thụ (kWh/100km)</label>
+                    <input
+                      type="number"
+                      id="consumption"
+                      value="{{ ev_config.consumption }}"
+                      step="0.1"
+                    />
+                  </div>
+                  <div class="input-group">
+                    <label>Ngưỡng an toàn (%)</label>
+                    <input
+                      type="number"
+                      id="min_battery"
+                      value="{{ ev_config.min_battery }}"
+                      min="5"
+                      max="30"
+                    />
+                  </div>
+                  <div class="input-group">
+                    <label>Số km còn đi được</label>
+                    <input
+                      type="number"
+                      id="km_remaining"
+                      value="460"
+                      readonly
+                      style="background: var(--gray-100)"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Priority Selection -->
+              <div class="priority-section">
+                <h4>Tùy chọn ưu tiên</h4>
+                <div class="priority-buttons">
+                  <button
+                    type="button"
+                    class="priority-btn active"
+                    data-priority="time"
+                  >
+                    Thời gian ít nhất
+                  </button>
+                  <button
+                    type="button"
+                    class="priority-btn"
+                    data-priority="distance"
+                  >
+                    Quãng đường ngắn
+                  </button>
+                  <button
+                    type="button"
+                    class="priority-btn"
+                    data-priority="cost"
+                  >
+                    Chi phí thấp nhất
+                  </button>
+                  <button
+                    type="button"
+                    class="priority-btn"
+                    data-priority="charges"
+                  >
+                    Ít lần sạc nhất
+                  </button>
+                </div>
+              </div>
+
+              <!-- Filters -->
+              <div class="filter-section">
+                <h4>Bộ lọc</h4>
+                <div class="filter-group">
+                  <div class="filter-item">
+                    <input type="checkbox" id="avoid_highways" />
+                    <label for="avoid_highways">Tránh cao tốc</label>
+                  </div>
+                  <div class="filter-item">
+                    <input type="checkbox" id="avoid_tolls" />
+                    <label for="avoid_tolls">Tránh trạm thu phí</label>
+                  </div>
+                  <div class="filter-item">
+                    <input type="checkbox" id="avoid_ferries" />
+                    <label for="avoid_ferries">Tránh phà</label>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
+
+          <!-- Search Button -->
+          <button class="search-btn" onclick="findRoute()" id="searchBtn">
+            Tìm đường
+          </button>
         </div>
 
-        <div class="priority-section">
-          <h4 style="color: #2c3e50; margin-bottom: 10px">Tùy chọn ưu tiên:</h4>
-          <div class="priority-buttons">
-            <button
-              type="button"
-              class="priority-btn active"
-              data-priority="time"
-            >
-              Tổng thời gian ít nhất
-            </button>
-            <button type="button" class="priority-btn" data-priority="distance">
-              Tổng quãng đường ngắn nhất
-            </button>
-            <button type="button" class="priority-btn" data-priority="charges">
-              Ít lần sạc nhất
-            </button>
+        <!-- Results Section -->
+        <div class="results-section" id="resultsSection">
+          <!-- Loading State -->
+          <div class="loading-state" id="loadingState">
+            <div class="spinner"></div>
+            <p id="loadingMessage">Đang tìm kiếm lộ trình tối ưu...</p>
+            <div class="loading-timer" id="loadingTimer">0 giây</div>
+
+            <!-- Loading Steps -->
+            <div class="loading-steps" id="loadingSteps">
+              <div class="loading-step" id="step-validate" data-step="1">
+                <div class="step-indicator">1</div>
+                <div class="step-text">Kiểm tra dữ liệu đầu vào</div>
+                <div class="step-status"></div>
+              </div>
+              <div class="loading-step" id="step-geocode-start" data-step="2">
+                <div class="step-indicator">2</div>
+                <div class="step-text">Geocoding điểm xuất phát</div>
+                <div class="step-status"></div>
+              </div>
+              <div class="loading-step" id="step-geocode-end" data-step="3">
+                <div class="step-indicator">3</div>
+                <div class="step-text">Geocoding điểm đến</div>
+                <div class="step-status"></div>
+              </div>
+              <div class="loading-step" id="step-osrm" data-step="4">
+                <div class="step-indicator">4</div>
+                <div class="step-text">Lấy lộ trình từ OSRM</div>
+                <div class="step-status"></div>
+              </div>
+              <div class="loading-step" id="step-charging" data-step="5">
+                <div class="step-indicator">5</div>
+                <div class="step-text">Tính toán trạm sạc</div>
+                <div class="step-status"></div>
+              </div>
+              <div class="loading-step" id="step-optimize" data-step="6">
+                <div class="step-indicator">6</div>
+                <div class="step-text">Tối ưu hóa lộ trình</div>
+                <div class="step-status"></div>
+              </div>
+            </div>
+
+            <div class="loading-hint">
+              Lưu ý: Lộ trình xa (trên 300km) có thể mất 20-60 giây do phải tính
+              toán nhiều trạm sạc và lộ trình thay thế
+            </div>
+          </div>
+
+          <!-- Error State -->
+          <div class="error-state" id="errorState">
+            <div class="error-box">
+              <div class="error-header">
+                <div class="error-icon">!</div>
+                <div class="error-title" id="errorTitle">Đã xảy ra lỗi</div>
+              </div>
+              <div class="error-message" id="errorMessage">
+                Không thể tìm đường đi
+              </div>
+              <div
+                class="error-details"
+                id="errorDetails"
+                style="display: none"
+              ></div>
+            </div>
+
+            <div class="error-suggestions">
+              <h4>Gợi ý khắc phục:</h4>
+              <ul id="errorSuggestions">
+                <li>Kiểm tra lại địa chỉ điểm đi và điểm đến</li>
+                <li>Thử lại sau vài giây</li>
+                <li>Kiểm tra kết nối internet</li>
+              </ul>
+            </div>
+
+            <button class="retry-btn" onclick="findRoute()">Thử lại</button>
+          </div>
+
+          <!-- No Results State -->
+          <div class="no-results-state" id="noResultsState">
+            <h3>Không tìm thấy lộ trình</h3>
+            <p>Vui lòng thử lại với pin cao hơn hoặc điều chỉnh thông số xe</p>
+          </div>
+
+          <!-- Routes List -->
+          <div id="routesContainer" style="display: none">
+            <div class="results-header">Danh sách lộ trình</div>
+            <div id="routesList"></div>
           </div>
         </div>
-
-        <div class="options">
-          <h4>Bộ lọc:</h4>
-          <div class="options-row">
-            <div class="checkbox-group">
-              <input type="checkbox" id="avoid_highways" />
-              <label for="avoid_highways">Tránh cao tốc</label>
-            </div>
-            <div class="checkbox-group">
-              <input type="checkbox" id="avoid_tolls" />
-              <label for="avoid_tolls">Tránh trạm thu phí</label>
-            </div>
-            <div class="checkbox-group">
-              <input type="checkbox" id="avoid_ferries" />
-              <label for="avoid_ferries">Tránh phà</label>
-            </div>
-          </div>
-        </div>
-
-        <button onclick="findRoute()" id="searchBtn">Tìm kiếm</button>
       </div>
 
-      <!-- Loading chỉ hiện khi tìm kiếm -->
-      <div class="loading" id="loading" style="display: none">
-        <div class="spinner"></div>
-        <p>Đang tìm kiếm lộ trình tối ưu...</p>
-        <div class="loading-timer" id="loadingTimer">0 giây</div>
-        <div class="loading-hint">
-          💡 <strong>Lưu ý:</strong> Lộ trình xa (>300km) có thể mất 20-60
-          giây<br />
-          do phải tính toán nhiều trạm sạc và lộ trình thay thế
-        </div>
-      </div>
-
-      <!-- No results -->
-      <div class="no-results" id="noResults" style="display: none">
-        <h3>Không tìm thấy lộ trình khả thi</h3>
-        <p>Vui lòng thử lại với pin cao hơn hoặc điều chỉnh thông số xe</p>
-      </div>
-
-      <!-- Main layout -->
-      <div class="main-layout" id="mainLayout" style="display: none">
-        <div class="sidebar" id="routesList">
-          <h3>Danh sách lộ trình</h3>
-          <div id="routesListContent"></div>
-        </div>
-
-        <div class="main-content">
-          <div class="charts-section" id="chartsSection">
-            <h3 style="color: #2c3e50; margin-bottom: 20px">Biểu đồ so sánh</h3>
-            <div id="comparisonChart" class="chart-container"></div>
-          </div>
-
-          <div id="map">
-            <div style="text-align: center; padding: 50px; color: #999">
-              Bản đồ sẽ hiển thị sau khi tìm đường
-            </div>
-          </div>
-
-          <div id="detailCharts" class="charts-section" style="display: none">
-            <h3 style="color: #2c3e50; margin-bottom: 20px">
-              Chi tiết lộ trình
-            </h3>
-            <div id="detailChartsContent"></div>
+      <!-- ===== MAP CONTAINER ===== -->
+      <div class="map-container">
+        <div id="map">
+          <div class="map-placeholder">
+            <h3>Bản đồ lộ trình</h3>
+            <p>Nhập điểm đi và điểm đến, sau đó nhấn Tìm đường</p>
           </div>
         </div>
       </div>
@@ -1067,7 +1995,322 @@
       let loadingInterval = null;
       let loadingStartTime = 0;
 
-      // Priority selection
+      // === FORMAT CURRENCY FUNCTION ===
+      function formatCurrency(amount) {
+        if (amount === null || amount === undefined || isNaN(amount))
+          return "0 đ";
+        return new Intl.NumberFormat("vi-VN").format(Math.round(amount)) + " đ";
+      }
+
+      // === BUILD TRAVEL EVENTS TIMELINE ===
+      function buildTravelEventsHtml(travelEvents) {
+        if (!travelEvents || travelEvents.length === 0) {
+          return '<div class="no-events">✅ Không có trạm thu phí/phà trên đường</div>';
+        }
+
+        const eventIcons = {
+          toll: "💰",
+          ferry: "🚢",
+          charging: "⚡",
+          highway_stop: "🛣️",
+        };
+
+        const eventLabels = {
+          toll: "Trạm thu phí",
+          ferry: "Phà",
+          charging: "Sạc pin",
+          highway_stop: "Trạm dừng",
+        };
+
+        let html = '<div class="travel-events-timeline">';
+
+        travelEvents.forEach((event, index) => {
+          const icon = eventIcons[event.type] || "📍";
+          const label = eventLabels[event.type] || event.type;
+          const costClass = event.cost > 0 ? "" : "free";
+          const costText =
+            event.cost > 0 ? formatCurrency(event.cost) : "Miễn phí";
+
+          let detailsHtml = "";
+          if (event.details) {
+            if (event.type === "charging") {
+              detailsHtml = `
+                <span class="event-detail">${event.details.from_percent}% → ${event.details.to_percent}%</span>
+                <span class="event-detail">${event.details.charge_time_min} phút</span>
+                <span class="event-detail">${event.details.energy_kwh} kWh</span>
+              `;
+            } else if (event.type === "toll") {
+              detailsHtml =
+                event.details.highway !== "N/A"
+                  ? `<span class="event-detail">Cao tốc: ${event.details.highway}</span>`
+                  : "";
+            } else if (event.type === "ferry") {
+              detailsHtml = `<span class="event-detail">~${
+                event.details.crossing_time_min || 15
+              } phút qua phà</span>`;
+            }
+          }
+
+          html += `
+            <div class="travel-event">
+              <div class="event-marker ${event.type}">${icon}</div>
+              <div class="event-content">
+                <div class="event-header">
+                  <span class="event-name">${event.name}</span>
+                  <span class="event-cost ${costClass}">${costText}</span>
+                </div>
+                <div class="event-meta">
+                  <span class="event-km">Km ${event.km}</span>
+                  ${detailsHtml}
+                </div>
+              </div>
+            </div>
+          `;
+        });
+
+        html += "</div>";
+        return html;
+      }
+
+      // === BUILD INFEASIBILITY ERROR CARD (Enhanced UX) ===
+      function buildInfeasibilityCard(errorData) {
+        const location = errorData.location || {};
+        const batteryState = errorData.battery_state || {};
+        const progress = errorData.progress || {};
+        const suggestions = errorData.suggestions || [];
+        const errorType = errorData.error_type || "unknown";
+
+        // Battery state calculations
+        const currentPercent = batteryState.current_percent || 0;
+        const deficitPercent = batteryState.deficit_percent || 0;
+        const neededPercent =
+          batteryState.needed_percent || currentPercent + deficitPercent;
+        const maxRange = batteryState.max_range_km || 0;
+        const additionalRangeNeeded =
+          batteryState.additional_range_needed_km || 0;
+
+        // Calculate visual bar widths (capped at 100%)
+        const currentWidth = Math.min(currentPercent, 100);
+        const deficitWidth = Math.min(
+          Math.abs(deficitPercent),
+          100 - currentWidth
+        );
+
+        // Progress calculation (if available)
+        const completionPercent =
+          progress.completion_percent ||
+          (location.km_from_start && location.km_to_destination
+            ? Math.round(
+                (location.km_from_start /
+                  (location.km_from_start + location.km_to_destination)) *
+                  100
+              )
+            : 0);
+
+        // Choose icon based on error type
+        const errorIcons = {
+          no_reachable_station: "🔋",
+          battery_depleted: "🪫",
+          no_feasible_route: "⚠️",
+          unknown: "❌",
+        };
+        const icon = errorIcons[errorType] || errorIcons["unknown"];
+
+        let html = `
+          <div class="infeasibility-card">
+            <!-- Header với icon và message chính -->
+            <div class="infeasibility-header">
+              <div class="infeasibility-icon">${icon}</div>
+              <div>
+                <div class="infeasibility-title">${
+                  errorData.message || "Lộ trình không khả thi"
+                }</div>
+                <div class="infeasibility-subtitle" style="font-size: 0.8rem; opacity: 0.9; margin-top: 4px;">
+                  ${
+                    errorType === "battery_depleted"
+                      ? `Xe dừng tại km ${
+                          location.km_from_start || "?"
+                        } (còn cách đích ${
+                          location.km_to_destination || "?"
+                        }km)`
+                      : `Không tìm thấy trạm sạc phù hợp trong phạm vi di chuyển`
+                  }
+                </div>
+              </div>
+            </div>
+
+            <!-- Visual Progress (nếu có tiến độ) -->
+            ${
+              completionPercent > 0
+                ? `
+            <div class="progress-visual">
+              <div class="location-title" style="display: flex; justify-content: space-between;">
+                <span>📍 TIẾN ĐỘ CHUYẾN ĐI</span>
+                <span style="color: #b91c1c; font-weight: 700;">${completionPercent}% hoàn thành</span>
+              </div>
+              <div class="progress-bar-container">
+                <div class="progress-bar-filled" style="width: ${completionPercent}%"></div>
+              </div>
+              <div class="progress-labels">
+                <span>Xuất phát</span>
+                <span style="color: #dc2626; font-weight: 600;">⚠️ Hết pin</span>
+                <span>Đích (${location.km_to_destination || "?"}km)</span>
+              </div>
+            </div>
+            `
+                : ""
+            }
+
+            <!-- Visual Battery Bar với Animation -->
+            <div class="battery-visual">
+              <div class="location-title" style="display: flex; justify-content: space-between;">
+                <span>⚡ TRẠNG THÁI PIN</span>
+                <span style="color: var(--alert); font-weight: 700;">
+                  ${
+                    deficitPercent > 0
+                      ? `Thiếu ~${Math.round(deficitPercent)}%`
+                      : `Còn ${currentPercent}%`
+                  }
+                </span>
+              </div>
+              
+              <div class="battery-bar-container" style="height: 28px; background: #fecaca;">
+                <!-- Phần pin hiện có (màu xanh) -->
+                <div class="battery-bar-current" style="width: ${currentWidth}%; position: absolute; left: 0; top: 0; height: 100%;">
+                  ${
+                    currentWidth > 15
+                      ? `<span style="position: absolute; right: 8px; color: white; font-size: 11px; line-height: 28px; font-weight: 600; text-shadow: 0 1px 2px rgba(0,0,0,0.3);">${Math.round(
+                          currentPercent
+                        )}%</span>`
+                      : ""
+                  }
+                </div>
+                
+                <!-- Phần pin thiếu (gạch chéo animated) -->
+                ${
+                  deficitWidth > 0
+                    ? `
+                <div class="battery-bar-needed" style="width: ${deficitWidth}%; left: ${currentWidth}%; top: 0; height: 100%;">
+                  ${
+                    deficitWidth > 15
+                      ? `<span style="position: absolute; left: 8px; color: #991b1b; font-size: 10px; line-height: 28px; font-weight: 600;">+${Math.round(
+                          deficitPercent
+                        )}%</span>`
+                      : ""
+                  }
+                </div>
+                `
+                    : ""
+                }
+              </div>
+              
+              <div class="battery-labels">
+                <span>🟢 Hiện có: ${Math.round(currentPercent)}% (~${Math.round(
+          maxRange
+        )}km)</span>
+                <span>🔴 Cần thêm: ~${Math.round(
+                  additionalRangeNeeded ||
+                    (deficitPercent * maxRange) / currentPercent ||
+                    0
+                )}km</span>
+              </div>
+            </div>
+
+            <!-- Chi tiết lỗi -->
+            <div class="reason-box error">
+              <div class="reason-title">📋 Nguyên nhân</div>
+              <div class="reason-text">${
+                errorData.details ||
+                "Không có trạm sạc nào trong phạm vi di chuyển của pin hiện tại."
+              }</div>
+            </div>
+          </div>
+
+          <!-- Suggestion Chips (có thể click) -->
+          <div class="error-suggestions" style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 10px; padding: 16px;">
+            <h4 style="margin: 0 0 12px 0; color: #166534; font-size: 0.9rem;">💡 Gợi ý khắc phục:</h4>
+            <div class="suggestion-chips">
+              ${suggestions
+                .map((s, i) => {
+                  // Determine chip type and action
+                  const isPrimary = s.includes("100%") || s.includes("đầy");
+                  const chipClass = isPrimary
+                    ? "suggestion-chip primary"
+                    : "suggestion-chip";
+                  return `<span class="${chipClass}" onclick="applySuggestion('${s.replace(
+                    /'/g,
+                    "\\'"
+                  )}', ${i})">${s}</span>`;
+                })
+                .join("")}
+            </div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div style="display: flex; gap: 10px; margin-top: 16px;">
+            <button class="retry-btn" style="flex: 1;" onclick="document.getElementById('battery').focus(); document.getElementById('battery').select();">
+              📝 Điều chỉnh mức pin
+            </button>
+            <button class="retry-btn" style="flex: 1; background: var(--secondary);" onclick="findRoute()">
+              🔄 Thử lại
+            </button>
+          </div>
+        `;
+
+        return html;
+      }
+
+      // === APPLY SUGGESTION (Click vào chip sẽ thực hiện hành động) ===
+      function applySuggestion(text, index) {
+        // Kiểm tra các từ khóa để xác định hành động
+        if (text.includes("100%") || text.includes("đầy")) {
+          // Auto-fill 100% và tìm lại
+          document.getElementById("battery").value = 100;
+          updateKmRemaining();
+
+          // Hiệu ứng flash để thông báo đã thay đổi
+          const batteryInput = document.getElementById("battery");
+          batteryInput.style.transition = "all 0.3s";
+          batteryInput.style.boxShadow = "0 0 0 3px rgba(16, 185, 129, 0.5)";
+          batteryInput.style.borderColor = "#10b981";
+
+          setTimeout(() => {
+            batteryInput.style.boxShadow = "";
+            batteryInput.style.borderColor = "";
+            // Auto tìm lại sau khi hiệu ứng xong
+            findRoute();
+          }, 500);
+        } else if (text.includes("dung lượng") || text.includes("capacity")) {
+          // Focus vào ô dung lượng pin
+          toggleAdvanced(); // Mở advanced panel
+          setTimeout(() => {
+            const capacityInput = document.getElementById("capacity");
+            capacityInput.focus();
+            capacityInput.select();
+          }, 300);
+        } else if (text.includes("tiêu hao") || text.includes("consumption")) {
+          // Focus vào ô tiêu hao
+          toggleAdvanced();
+          setTimeout(() => {
+            const consumptionInput = document.getElementById("consumption");
+            consumptionInput.focus();
+            consumptionInput.select();
+          }, 300);
+        } else {
+          // Mặc định: Hiển thị thông báo
+          alert(`💡 Gợi ý: ${text}\n\nHãy điều chỉnh thông số và thử lại.`);
+        }
+      }
+
+      // === TOGGLE ADVANCED SETTINGS ===
+      function toggleAdvanced() {
+        const toggle = document.querySelector(".advanced-toggle");
+        const panel = document.getElementById("advancedPanel");
+        toggle.classList.toggle("open");
+        panel.classList.toggle("open");
+      }
+
+      // === PRIORITY SELECTION ===
       document.querySelectorAll(".priority-btn").forEach((btn) => {
         btn.addEventListener("click", function () {
           document
@@ -1077,7 +2320,7 @@
         });
       });
 
-      // Calculate km remaining
+      // === CALCULATE KM REMAINING ===
       document
         .getElementById("battery")
         .addEventListener("input", updateKmRemaining);
@@ -1101,6 +2344,7 @@
         document.getElementById("km_remaining").value = Math.round(kmRemaining);
       }
 
+      // === LOADING TIMER ===
       function updateLoadingTimer() {
         const elapsed = Math.floor((Date.now() - loadingStartTime) / 1000);
         const timerEl = document.getElementById("loadingTimer");
@@ -1108,14 +2352,374 @@
           timerEl.textContent = `${elapsed} giây`;
           if (elapsed > 30) {
             timerEl.style.color = "var(--warning)";
-            timerEl.innerHTML = `${elapsed} giây<br><small style="font-size: 0.8em;">Đang xử lý... vui lòng chờ</small>`;
+          }
+        }
+
+        // Auto-update loading steps based on elapsed time
+        updateLoadingStepsAuto(elapsed);
+      }
+
+      // === LOADING STEPS MANAGEMENT ===
+      let currentStep = 0;
+
+      function resetLoadingSteps() {
+        currentStep = 0;
+        document.querySelectorAll(".loading-step").forEach((step) => {
+          step.classList.remove("active", "completed", "error");
+          step.querySelector(".step-status").textContent = "";
+        });
+      }
+
+      function setLoadingStep(stepId, status, statusText = "") {
+        const step = document.getElementById(stepId);
+        if (!step) return;
+
+        // Remove all status classes
+        step.classList.remove("active", "completed", "error");
+
+        // Add new status
+        if (status === "active") {
+          step.classList.add("active");
+          step.querySelector(".step-status").textContent =
+            statusText || "Đang xử lý...";
+        } else if (status === "completed") {
+          step.classList.add("completed");
+          step.querySelector(".step-status").textContent =
+            statusText || "Hoàn thành";
+        } else if (status === "error") {
+          step.classList.add("error");
+          step.querySelector(".step-status").textContent = statusText || "Lỗi";
+        }
+      }
+
+      function updateLoadingStepsAuto(elapsed) {
+        // Simulate progress based on elapsed time
+        const steps = [
+          { id: "step-validate", time: 0 },
+          { id: "step-geocode-start", time: 1 },
+          { id: "step-geocode-end", time: 3 },
+          { id: "step-osrm", time: 5 },
+          { id: "step-charging", time: 15 },
+          { id: "step-optimize", time: 25 },
+        ];
+
+        for (let i = 0; i < steps.length; i++) {
+          if (elapsed >= steps[i].time) {
+            if (i < steps.length - 1 && elapsed >= steps[i + 1].time) {
+              setLoadingStep(steps[i].id, "completed");
+            } else if (i === steps.length - 1 || elapsed < steps[i + 1].time) {
+              setLoadingStep(steps[i].id, "active");
+              // Mark previous steps as completed
+              for (let j = 0; j < i; j++) {
+                setLoadingStep(steps[j].id, "completed");
+              }
+            }
           }
         }
       }
 
+      // === ERROR HANDLING ===
+      function showError(
+        errorType,
+        message,
+        details = null,
+        suggestions = null
+      ) {
+        // Hide loading and other states
+        document.getElementById("loadingState").classList.remove("show");
+        document.getElementById("noResultsState").classList.remove("show");
+        document.getElementById("routesContainer").style.display = "none";
+
+        // Show error state
+        document.getElementById("errorState").classList.add("show");
+
+        // Set error title based on type
+        const errorTitles = {
+          geocode: "Lỗi định vị địa chỉ",
+          osrm: "Lỗi tìm đường OSRM",
+          network: "Lỗi kết nối mạng",
+          server: "Lỗi máy chủ",
+          validation: "Lỗi dữ liệu đầu vào",
+          charging: "Lỗi tính toán trạm sạc",
+          timeout: "Hết thời gian chờ",
+          unknown: "Đã xảy ra lỗi",
+        };
+
+        document.getElementById("errorTitle").textContent =
+          errorTitles[errorType] || errorTitles["unknown"];
+        document.getElementById("errorMessage").textContent = message;
+
+        // Show details if available
+        const detailsEl = document.getElementById("errorDetails");
+        if (details) {
+          detailsEl.textContent = details;
+          detailsEl.style.display = "block";
+        } else {
+          detailsEl.style.display = "none";
+        }
+
+        // Update suggestions based on error type
+        const suggestionsEl = document.getElementById("errorSuggestions");
+        const defaultSuggestions = {
+          geocode: [
+            "Kiểm tra lại chính tả địa chỉ",
+            "Thử nhập địa chỉ chi tiết hơn (số nhà, đường, quận)",
+            "Thử dùng tên địa điểm phổ biến gần đó",
+          ],
+          osrm: [
+            "Thử lại sau vài giây",
+            "Kiểm tra kết nối internet",
+            "Thử với quãng đường ngắn hơn",
+            "Bỏ chọn các bộ lọc (tránh cao tốc, tránh phà...)",
+          ],
+          network: [
+            "Kiểm tra kết nối internet",
+            "Tải lại trang web",
+            "Thử lại sau vài giây",
+          ],
+          server: [
+            "Thử lại sau vài giây",
+            "Kiểm tra log server để biết chi tiết",
+            "Liên hệ quản trị viên nếu lỗi tiếp tục",
+          ],
+          validation: [
+            "Nhập đầy đủ điểm đi và điểm đến",
+            "Kiểm tra lại các thông số xe điện",
+            "Đảm bảo % pin >= 10%",
+          ],
+          charging: [
+            "Tăng % pin khởi đầu",
+            "Kiểm tra dung lượng pin đã nhập đúng chưa",
+            "Thử với quãng đường ngắn hơn",
+          ],
+          timeout: [
+            "Thử lại với quãng đường ngắn hơn",
+            "Thử lại sau vài phút",
+            "Kiểm tra kết nối internet",
+          ],
+        };
+
+        const suggestionList =
+          suggestions ||
+          defaultSuggestions[errorType] ||
+          defaultSuggestions["unknown"];
+        if (suggestionList) {
+          suggestionsEl.innerHTML = suggestionList
+            .map((s) => `<li>${s}</li>`)
+            .join("");
+        }
+
+        // Mark the failed step in loading UI
+        markStepError(errorType);
+      }
+
+      function markStepError(errorType) {
+        const stepMapping = {
+          validation: "step-validate",
+          geocode: "step-geocode-start",
+          osrm: "step-osrm",
+          charging: "step-charging",
+          server: "step-optimize",
+          network: "step-osrm",
+          timeout: "step-osrm",
+        };
+
+        const failedStep = stepMapping[errorType];
+        if (failedStep) {
+          setLoadingStep(failedStep, "error", "Thất bại");
+        }
+      }
+
+      function parseErrorFromResponse(data) {
+        // Parse error message from server response
+        let errorType = "unknown";
+        let message = data.error || "Không thể tìm đường đi";
+        let details = null;
+
+        const errorStr = (data.error || "").toLowerCase();
+
+        if (
+          errorStr.includes("geocod") ||
+          errorStr.includes("địa chỉ") ||
+          errorStr.includes("không tìm thấy")
+        ) {
+          errorType = "geocode";
+        } else if (
+          errorStr.includes("osrm") ||
+          errorStr.includes("route") ||
+          errorStr.includes("400") ||
+          errorStr.includes("đường đi")
+        ) {
+          errorType = "osrm";
+        } else if (
+          errorStr.includes("timeout") ||
+          errorStr.includes("hết thời gian")
+        ) {
+          errorType = "timeout";
+        } else if (
+          errorStr.includes("network") ||
+          errorStr.includes("kết nối") ||
+          errorStr.includes("connection")
+        ) {
+          errorType = "network";
+        } else if (
+          errorStr.includes("pin") ||
+          errorStr.includes("battery") ||
+          errorStr.includes("sạc") ||
+          errorStr.includes("charging")
+        ) {
+          errorType = "charging";
+        } else if (
+          errorStr.includes("server") ||
+          errorStr.includes("internal")
+        ) {
+          errorType = "server";
+        }
+
+        // Extract details if present
+        if (data.error && data.error.includes("Chi tiết")) {
+          const parts = data.error.split("Chi tiết:");
+          if (parts.length > 1) {
+            message = parts[0].trim();
+            details = parts[1].trim();
+          }
+        }
+
+        return { errorType, message, details };
+      }
+
+      function hideAllStates() {
+        document.getElementById("loadingState").classList.remove("show");
+        document.getElementById("errorState").classList.remove("show");
+        document.getElementById("noResultsState").classList.remove("show");
+        document.getElementById("routesContainer").style.display = "none";
+
+        // Reset infeasibility container
+        const infeasibilityContainer = document.getElementById(
+          "infeasibilityContainer"
+        );
+        if (infeasibilityContainer) {
+          infeasibilityContainer.innerHTML = "";
+          infeasibilityContainer.style.display = "none";
+        }
+
+        // Restore error box visibility
+        const errorBox = document.querySelector(".error-box");
+        const errorSuggestions = document.querySelector(".error-suggestions");
+        const retryBtn = document.querySelector(".retry-btn");
+        if (errorBox) errorBox.style.display = "block";
+        if (errorSuggestions) errorSuggestions.style.display = "block";
+        if (retryBtn) retryBtn.style.display = "block";
+      }
+
+      // === SHOW INFEASIBILITY ERROR (Battery/Charging Issues) ===
+      function showInfeasibilityError(errorData) {
+        hideAllStates();
+
+        // Clear loading timer
+        if (loadingInterval) {
+          clearInterval(loadingInterval);
+          loadingInterval = null;
+        }
+
+        // Mark relevant step as error
+        setLoadingStep("step-charging", "error", "Không khả thi");
+
+        // Build custom infeasibility card
+        const errorState = document.getElementById("errorState");
+        const errorBox = errorState.querySelector(".error-box");
+        const errorSuggestions = errorState.querySelector(".error-suggestions");
+        const retryBtn = errorState.querySelector(".retry-btn");
+
+        // Replace error-box content with infeasibility card
+        if (errorBox) {
+          errorBox.style.display = "none";
+        }
+        if (errorSuggestions) {
+          errorSuggestions.style.display = "none";
+        }
+        if (retryBtn) {
+          retryBtn.style.display = "none";
+        }
+
+        // Insert infeasibility card
+        let infeasibilityContainer = document.getElementById(
+          "infeasibilityContainer"
+        );
+        if (!infeasibilityContainer) {
+          infeasibilityContainer = document.createElement("div");
+          infeasibilityContainer.id = "infeasibilityContainer";
+          errorState.insertBefore(
+            infeasibilityContainer,
+            errorState.firstChild
+          );
+        }
+
+        infeasibilityContainer.innerHTML = buildInfeasibilityCard(errorData);
+        infeasibilityContainer.style.display = "block";
+
+        document.getElementById("errorState").classList.add("show");
+      }
+
+      // === SHOW ROUTE DETAIL ===
+      function showRouteDetail(index) {
+        const route = currentRoutes[index];
+
+        // Highlight selected card
+        document.querySelectorAll(".route-card").forEach((card, i) => {
+          card.classList.toggle("active", i === index);
+        });
+
+        // Scroll card into view
+        const selectedCard = document.querySelectorAll(".route-card")[index];
+        if (selectedCard) {
+          selectedCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+      }
+
+      // === TOGGLE DIRECTIONS (Show More/Less) ===
+      function toggleDirections(cardIndex, button) {
+        const card = document.querySelectorAll(".route-card")[cardIndex];
+        if (!card) return;
+
+        const isExpanded = button.dataset.expanded === "true";
+        const hiddenSteps = card.querySelectorAll(
+          ".direction-item.hidden-step"
+        );
+
+        if (isExpanded) {
+          // Collapse: Ẩn các bước thừa
+          hiddenSteps.forEach((step) => step.classList.remove("show"));
+          button.innerHTML = `<span>Xem thêm ${hiddenSteps.length} bước nữa</span><span>▼</span>`;
+          button.dataset.expanded = "false";
+        } else {
+          // Expand: Hiện tất cả
+          hiddenSteps.forEach((step) => step.classList.add("show"));
+          button.innerHTML = `<span>Thu gọn</span><span>▲</span>`;
+          button.dataset.expanded = "true";
+        }
+      }
+
+      // === TAB SWITCHING ===
+      function switchTab(cardIndex, tabName) {
+        const card = document.querySelectorAll(".route-card")[cardIndex];
+        if (!card) return;
+
+        // Update tab buttons
+        card.querySelectorAll(".card-tab").forEach((tab) => {
+          tab.classList.toggle("active", tab.dataset.tab === tabName);
+        });
+
+        // Update tab content
+        card.querySelectorAll(".tab-content").forEach((content) => {
+          content.classList.toggle("active", content.dataset.tab === tabName);
+        });
+      }
+
+      // === FIND ROUTE ===
       async function findRoute() {
-        const start = document.getElementById("start").value;
-        const end = document.getElementById("end").value;
+        const start = document.getElementById("start").value.trim();
+        const end = document.getElementById("end").value.trim();
         const battery = parseFloat(document.getElementById("battery").value);
         const consumption = parseFloat(
           document.getElementById("consumption").value
@@ -1130,28 +2734,68 @@
         const priority = document.querySelector(".priority-btn.active").dataset
           .priority;
 
+        // Validate input
         if (!start || !end) {
-          alert("⚠️ Vui lòng nhập đầy đủ điểm đi và điểm đến");
+          showError(
+            "validation",
+            "Vui lòng nhập đầy đủ điểm đi và điểm đến",
+            null,
+            [
+              "Nhập địa chỉ điểm xuất phát",
+              "Nhập địa chỉ điểm đến",
+              'Ví dụ: "Trường ĐH Sư phạm TP.HCM" hoặc "280 An Dương Vương, Q5"',
+            ]
+          );
           return;
         }
 
-        console.log("🚀 BẮT ĐẦU TÌM KIẾM:", new Date().toLocaleTimeString());
-        console.time("⏱️ Thời gian tổng");
+        if (isNaN(battery) || battery < 10 || battery > 100) {
+          showError(
+            "validation",
+            "Mức pin không hợp lệ",
+            `Pin hiện tại: ${battery}%`,
+            ["Pin phải từ 10% đến 100%", "Kiểm tra lại thông số pin"]
+          );
+          return;
+        }
 
-        // Ẩn tất cả, chỉ hiện loading
-        document.getElementById("loading").style.display = "block";
-        document.getElementById("mainLayout").style.display = "none";
-        document.getElementById("noResults").style.display = "none";
+        console.log("Bắt đầu tìm kiếm:", new Date().toLocaleTimeString());
+
+        // === AUTO-COLLAPSE: Đóng panel cấu hình để dọn không gian ===
+        const advancedPanel = document.getElementById("advancedPanel");
+        const advancedToggle = document.querySelector(".advanced-toggle");
+        if (advancedPanel && advancedPanel.classList.contains("open")) {
+          advancedPanel.classList.remove("open");
+          if (advancedToggle) advancedToggle.classList.remove("open");
+        }
+
+        // Reset and show loading state
+        hideAllStates();
+        resetLoadingSteps();
+        document.getElementById("loadingState").classList.add("show");
+        document.getElementById("loadingMessage").textContent =
+          "Đang tìm kiếm lộ trình tối ưu...";
         document.getElementById("searchBtn").disabled = true;
 
-        // Bắt đầu timer
+        // Start with first step
+        setLoadingStep("step-validate", "active", "Đang kiểm tra...");
+
+        // Start timer
         loadingStartTime = Date.now();
         loadingInterval = setInterval(updateLoadingTimer, 1000);
 
-        try {
-          console.log("📡 Gửi request tới /route...");
-          const startTime = performance.now();
+        // Simulate step 1 completion
+        setTimeout(() => {
+          setLoadingStep("step-validate", "completed");
+          setLoadingStep("step-geocode-start", "active", "Đang tìm...");
+          document.getElementById(
+            "loadingMessage"
+          ).textContent = `Đang định vị "${start.substring(0, 30)}${
+            start.length > 30 ? "..." : ""
+          }"`;
+        }, 500);
 
+        try {
           const response = await fetch("/route", {
             method: "POST",
             headers: {
@@ -1171,93 +2815,160 @@
             }),
           });
 
-          const responseTime = ((performance.now() - startTime) / 1000).toFixed(
-            2
-          );
-          console.log(`✅ Response nhận sau: ${responseTime}s`);
-
-          // Dừng timer
           clearInterval(loadingInterval);
 
-          // Kiểm tra HTTP status
+          // Check HTTP status
           if (!response.ok) {
-            console.error("❌ HTTP Error:", response.status);
-            throw new Error(`Server trả về lỗi: ${response.status}`);
-          }
-
-          console.log("📦 Parse JSON...");
-          const data = await response.json();
-          console.log("✅ Data:", data);
-          console.timeEnd("⏱️ Thời gian tổng");
-
-          // Ẩn loading ngay sau khi nhận response
-          document.getElementById("loading").style.display = "none";
-
-          if (data.error || !data.routes || data.routes.length === 0) {
-            console.error("❌ Không có route:", data.error);
-            document.getElementById("noResults").style.display = "block";
-            if (data.error) {
-              document.querySelector(".no-results h3").textContent =
-                "Lỗi: " + data.error;
-            }
+            const statusMessages = {
+              400: "Yêu cầu không hợp lệ",
+              404: "Không tìm thấy tài nguyên",
+              500: "Lỗi máy chủ nội bộ",
+              502: "Bad Gateway - Server không phản hồi",
+              503: "Dịch vụ tạm thời không khả dụng",
+              504: "Gateway Timeout - Server quá chậm",
+            };
+            const errorMsg =
+              statusMessages[response.status] || `Lỗi HTTP ${response.status}`;
+            showError(
+              "server",
+              errorMsg,
+              `HTTP Status Code: ${response.status}`,
+              [
+                "Thử lại sau vài giây",
+                "Kiểm tra log server để biết chi tiết lỗi",
+                "Có thể server đang quá tải",
+              ]
+            );
             return;
           }
 
-          console.log(`✅ Tìm thấy ${data.routes.length} lộ trình`);
+          const data = await response.json();
+          console.log("Data received:", data);
+
+          // Mark all steps as completed
+          document.querySelectorAll(".loading-step").forEach((step) => {
+            setLoadingStep(step.id, "completed");
+          });
+
+          // Short delay to show completion
+          await new Promise((resolve) => setTimeout(resolve, 300));
+
+          hideAllStates();
+
+          // Handle error response
+          if (data.error) {
+            // Check if it's an infeasibility error with detailed info
+            if (
+              data.error === "infeasible" ||
+              data.error_type === "no_reachable_station" ||
+              data.error_type === "battery_depleted"
+            ) {
+              showInfeasibilityError(data);
+              return;
+            }
+
+            const { errorType, message, details } =
+              parseErrorFromResponse(data);
+            showError(errorType, message, details);
+            return;
+          }
+
+          // Check for infeasibility in route response
+          if (data.infeasibility) {
+            showInfeasibilityError(data.infeasibility);
+            return;
+          }
+
+          // Handle no routes
+          if (!data.routes || data.routes.length === 0) {
+            showError(
+              "charging",
+              "Không tìm thấy lộ trình khả thi",
+              "Hệ thống không thể tính toán lộ trình với thông số hiện tại",
+              [
+                "Tăng mức pin khởi đầu",
+                "Giảm ngưỡng pin an toàn",
+                "Thử với quãng đường ngắn hơn",
+                "Kiểm tra có trạm sạc trên đường đi không",
+              ]
+            );
+            return;
+          }
+
           currentRoutes = data.routes;
 
           // Update map
           document.getElementById("map").innerHTML = data.map;
 
-          // CHỈ HIỆN BIỂU ĐỒ SO SÁNH NẾU CÓ ≥ 2 ROUTES
-          const chartsSection = document.getElementById("chartsSection");
-          if (data.routes.length >= 2 && data.comparison_chart) {
-            chartsSection.style.display = "block";
-            document.getElementById(
-              "comparisonChart"
-            ).innerHTML = `<img src="${data.comparison_chart}" alt="Comparison Chart">`;
-          } else {
-            chartsSection.style.display = "none";
-          }
-
-          // Display routes list
+          // Display routes
           displayRoutesList(data.routes);
 
-          // TỰ ĐỘNG HIỆN BIỂU ĐỒ CHI TIẾT CHO ROUTE ĐẦU TIÊN
+          document.getElementById("routesContainer").style.display = "block";
+
+          // Auto select first route
           if (data.routes.length > 0) {
             showRouteDetail(0);
           }
-
-          // Hiện kết quả
-          document.getElementById("mainLayout").style.display = "grid";
-          console.log("🎉 HOÀN TẤT!");
         } catch (error) {
-          console.error("❌ LỖI:", error);
-          console.timeEnd("⏱️ Thời gian tổng");
+          console.error("Error:", error);
           clearInterval(loadingInterval);
-          document.getElementById("loading").style.display = "none";
-          document.getElementById("noResults").style.display = "block";
-          document.querySelector(".no-results h3").textContent =
-            "Có lỗi xảy ra khi tìm kiếm";
-          document.querySelector(".no-results p").textContent =
-            error.message || "Vui lòng kiểm tra kết nối hoặc thử lại";
+
+          // Determine error type from exception
+          let errorType = "network";
+          let errorMessage = error.message || "Không thể kết nối đến server";
+          let errorDetails = null;
+
+          if (error.name === "TypeError" && error.message.includes("fetch")) {
+            errorType = "network";
+            errorMessage = "Không thể kết nối đến server";
+            errorDetails =
+              "Kiểm tra xem server Flask đang chạy không (python app.py)";
+          } else if (
+            error.message.includes("timeout") ||
+            error.message.includes("Timeout")
+          ) {
+            errorType = "timeout";
+            errorMessage = "Hết thời gian chờ phản hồi từ server";
+          } else if (error.message.includes("JSON")) {
+            errorType = "server";
+            errorMessage = "Server trả về dữ liệu không hợp lệ";
+            errorDetails = error.message;
+          } else if (
+            error.message.includes("500") ||
+            error.message.includes("502") ||
+            error.message.includes("503")
+          ) {
+            errorType = "server";
+            errorMessage = "Lỗi máy chủ nội bộ";
+          }
+
+          showError(errorType, errorMessage, errorDetails);
         } finally {
           document.getElementById("searchBtn").disabled = false;
         }
       }
 
+      // === DISPLAY ROUTES LIST ===
       function displayRoutesList(routes) {
-        const listContent = document.getElementById("routesListContent");
-        listContent.innerHTML = "";
+        const container = document.getElementById("routesList");
+        container.innerHTML = "";
 
         routes.forEach((route, index) => {
           const isBest = route.is_best === true;
-          const item = document.createElement("div");
-          item.className = "route-list-item" + (isBest ? " best" : "");
-          item.onclick = () => showRouteDetail(index);
+          const card = document.createElement("div");
+          card.className = "route-card" + (isBest ? " best" : "");
+          card.onclick = (e) => {
+            // Don't trigger if clicking on tabs
+            if (
+              !e.target.closest(".card-tabs") &&
+              !e.target.closest(".tab-content")
+            ) {
+              showRouteDetail(index);
+            }
+          };
 
-          // TÍNH TOÁN LÝ DO TẠI SAO TỐT NHẤT
-          let reasonText = "";
+          // Calculate reasons for best route
+          let reasonHtml = "";
           if (isBest && routes.length > 1) {
             const otherRoutes = routes.filter((r, i) => i !== index);
             const avgTime =
@@ -1285,195 +2996,322 @@
               reasons.push(`Ngắn hơn ${distanceDiff.toFixed(1)} km`);
 
             if (reasons.length > 0) {
-              reasonText = `
-                <div style="margin-top: 12px; padding: 12px; background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(5, 150, 105, 0.05)); border-left: 3px solid #10b981; border-radius: 8px;">
-                  <div style="font-weight: 700; color: #059669; margin-bottom: 8px; font-size: 0.85em;">
-                    ⭐ Tại sao tối ưu nhất?
-                  </div>
-                  <div style="font-size: 0.8em; line-height: 1.6; color: #047857;">
-                    ${reasons.join("<br>")}
-                  </div>
+              reasonHtml = `
+                <div class="reason-box">
+                  <div class="reason-title">Tại sao tối ưu nhất?</div>
+                  <div class="reason-list">${reasons.join("<br>")}</div>
                 </div>
               `;
             }
           }
 
-          // ========== HIỂN THỊ ĐƯỜNG ĐI CHI TIẾT =========
-          let roadDetailsHtml = "";
-
-          // PHẦN 1: TỔNG HỢP CÁC ĐƯỜNG CHÍNH (từ segments)
-          if (route.segments && route.segments.length > 0) {
-            console.log("📍 Route segments:", route.segments); // Debug
-
-            roadDetailsHtml += `
-              <div class="stops-list" style="margin-top: 15px;">
-                <strong style="color: #2e7d32; font-size: 16px;"> Các đường chính (${
-                  route.segments.length
-                } đoạn):</strong>
-                <div style="max-height: 200px; overflow-y: auto; margin-top: 8px;">
-                  ${route.segments
-                    .map(
-                      (seg, i) => `
-                    <div class="stops-list-item" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 1px solid #e5e7eb; background: ${
-                      i % 2 === 0 ? "#f9fafb" : "#ffffff"
-                    };">
-                      <div style="flex: 1;">
-                        <span style="color: #2e7d32; font-weight: 700; margin-right: 8px;">${
-                          i + 1
-                        }.</span>
-                        <span style="font-weight: 600; color: #1a1a1a;">${
-                          seg.road
-                        }</span>
-                      </div>
-                      <div style="text-align: right; min-width: 120px;">
-                        <div style="font-weight: 700; color: #2e7d32; font-size: 14px;"> ${
-                          seg.distance_text
-                        }</div>
-                        <div style="font-size: 12px; color: #757575;">⏱ ${
-                          seg.duration_text
-                        }</div>
-                      </div>
-                    </div>
-                  `
-                    )
-                    .join("")}
-                </div>
-              </div>
-            `;
-          }
-
-          // PHẦN 2: CHỈ DẪN CHI TIẾT TỪNG BƯỚC (từ instructions)
-          if (route.instructions && route.instructions.length > 5) {
-            // Chỉ hiển thị nếu có nhiều hơn 5 bước
-            const totalSteps = route.instructions.length;
-            const showLimit = 5; // Chỉ hiện 5 bước đầu
-
-            roadDetailsHtml += `
-              <div class="stops-list" style="margin-top: 15px;">
-                <strong style="color: #1976d2; font-size: 16px;">🧭 Chỉ dẫn chi tiết (${totalSteps} bước):</strong>
-                <div style="max-height: 150px; overflow-y: auto; margin-top: 8px; font-size: 13px;">
-                  ${route.instructions
-                    .slice(0, showLimit)
-                    .map(
-                      (inst, i) => `
-                    <div style="padding: 8px 10px; border-bottom: 1px solid #f0f0f0; display: flex; gap: 10px;">
-                      <div style="min-width: 25px; font-weight: 700; color: #1976d2;">${
-                        i + 1
-                      }.</div>
-                      <div style="flex: 1;">
-                        ${inst.text}
-                        <div style="color: #757575; font-size: 11px; margin-top: 3px;">
-                          📏 ${inst.distance} • ⏱️ ${inst.duration}
-                        </div>
-                      </div>
-                    </div>
-                  `
-                    )
-                    .join("")}
-                  ${
-                    totalSteps > showLimit
-                      ? `
-                    <div style="padding: 8px; text-align: center; color: #757575; font-size: 12px; font-style: italic;">
-                      ... và ${
-                        totalSteps - showLimit
-                      } bước nữa (click để xem chi tiết)
-                    </div>
-                  `
-                      : ""
-                  }
-                </div>
-              </div>
-            `;
-          }
-          // ================================================
-
-          item.innerHTML = `
-            <div class="route-title">
-              <span>${route.name}</span>
-              ${isBest ? '<span class="route-badge">Tốt nhất</span>' : ""}
-            </div>
-            <div class="route-metrics-small">
-              <div>
-                <div class="label">Quãng đường</div>
-                <div class="value">${route.metrics.total_distance} km</div>
-              </div>
-              <div>
-                <div class="label">Tổng thời gian</div>
-                <div class="value">${route.metrics.total_time} phút</div>
-              </div>
-              <div>
-                <div class="label">Số lần sạc</div>
-                <div class="value">${route.metrics.num_charges}</div>
-              </div>
-              <div>
-                <div class="label">Pin còn lại</div>
-                <div class="value">${route.metrics.final_battery}%</div>
-              </div>
-            </div>
-            ${reasonText}
-            ${roadDetailsHtml}
-            ${
-              route.charging_stops.length > 0
-                ? `
-              <div class="stops-list" style="margin-top: 15px;">
-                <strong style="color: #f59e0b; font-size: 16px;">🔌 Trạm sạc (${
-                  route.charging_stops.length
-                } trạm):</strong>
-                ${route.charging_stops
-                  .map(
-                    (s, i) => `
-                  <div class="stops-list-item">
-                    ${i + 1}. ${s.station.name} (${s.charge_time}p)
+          // Build charging stops HTML
+          let chargingHtml = "";
+          if (route.charging_stops && route.charging_stops.length > 0) {
+            chargingHtml = route.charging_stops
+              .map(
+                (s, i) => `
+              <div class="charging-item">
+                <div class="charging-marker">${i + 1}</div>
+                <div class="charging-info">
+                  <div class="charging-name">${s.station.name}</div>
+                  <div class="charging-details">
+                    <span>Thời gian: ${s.charge_time} phút</span>
+                    <span>Năng lượng: ${s.energy_kwh || "?"} kWh</span>
+                    ${
+                      s.charging_cost
+                        ? `<span class="charging-cost">${formatCurrency(
+                            s.charging_cost
+                          )}</span>`
+                        : ""
+                    }
                   </div>
-                `
-                  )
-                  .join("")}
+                </div>
               </div>
             `
-                : '<div style="margin-top: 10px; color: #10b981; font-weight: 600; padding: 10px; background: rgba(16, 185, 129, 0.1); border-radius: 8px; text-align: center;">✅ Không cần sạc</div>'
+              )
+              .join("");
+          } else {
+            chargingHtml =
+              '<div class="no-charging">Không cần sạc trên đường đi</div>';
+          }
+
+          // Build segments HTML
+          let segmentsHtml = "";
+          if (route.segments && route.segments.length > 0) {
+            segmentsHtml = route.segments
+              .map(
+                (seg, i) => `
+              <div class="segment-item">
+                <div class="segment-number">${i + 1}</div>
+                <div class="segment-name">${seg.road}</div>
+                <div class="segment-stats">
+                  <div class="segment-distance">${seg.distance_text}</div>
+                  <div class="segment-duration">${seg.duration_text}</div>
+                </div>
+              </div>
+            `
+              )
+              .join("");
+          } else {
+            segmentsHtml =
+              '<p style="color: var(--gray-500); text-align: center; padding: 20px;">Không có dữ liệu đường đi</p>';
+          }
+
+          // Build directions HTML with Show More/Less
+          let directionsHtml = "";
+          if (route.instructions && route.instructions.length > 0) {
+            const showLimit = 10;
+            const totalSteps = route.instructions.length;
+            const hasMore = totalSteps > showLimit;
+
+            directionsHtml = route.instructions
+              .map(
+                (inst, i) => `
+              <div class="direction-item ${
+                i >= showLimit ? "hidden-step" : ""
+              }" data-step-index="${i}">
+                <div class="direction-step">${i + 1}</div>
+                <div class="direction-info">
+                  <div class="direction-text">${inst.text}</div>
+                  <div class="direction-meta">${inst.distance} - ${
+                  inst.duration
+                }</div>
+                </div>
+              </div>
+            `
+              )
+              .join("");
+
+            if (hasMore) {
+              directionsHtml += `
+                <button class="show-more-btn" onclick="toggleDirections(${index}, this)" data-expanded="false">
+                  <span>Xem thêm ${totalSteps - showLimit} bước nữa</span>
+                  <span>▼</span>
+                </button>
+              `;
             }
+          } else {
+            directionsHtml =
+              '<p style="color: var(--gray-500); text-align: center; padding: 20px;">Không có chỉ dẫn chi tiết</p>';
+          }
+
+          // Build comparison context for non-best routes
+          let comparisonHtml = "";
+          if (!isBest && routes.length > 1) {
+            const bestRoute = routes.find((r) => r.is_best);
+            if (bestRoute) {
+              const timeDiff =
+                route.metrics.total_time - bestRoute.metrics.total_time;
+              const distDiff =
+                route.metrics.total_distance - bestRoute.metrics.total_distance;
+              const chargeDiff =
+                route.metrics.num_charges - bestRoute.metrics.num_charges;
+
+              const comparisons = [];
+              if (Math.abs(timeDiff) >= 1) {
+                const cls = timeDiff > 0 ? "worse" : "better";
+                const sign = timeDiff > 0 ? "+" : "";
+                comparisons.push(
+                  `<span class="comparison-item ${cls}"><span>⏱️</span>${sign}${timeDiff.toFixed(
+                    0
+                  )} phút</span>`
+                );
+              }
+              if (Math.abs(distDiff) >= 0.5) {
+                const cls = distDiff > 0 ? "worse" : "better";
+                const sign = distDiff > 0 ? "+" : "";
+                comparisons.push(
+                  `<span class="comparison-item ${cls}"><span>📏</span>${sign}${distDiff.toFixed(
+                    1
+                  )} km</span>`
+                );
+              }
+              if (chargeDiff !== 0) {
+                const cls = chargeDiff > 0 ? "worse" : "better";
+                const sign = chargeDiff > 0 ? "+" : "";
+                comparisons.push(
+                  `<span class="comparison-item ${cls}"><span>⚡</span>${sign}${chargeDiff} lần sạc</span>`
+                );
+              }
+
+              if (comparisons.length > 0) {
+                comparisonHtml = `<div class="comparison-context">So với tối ưu: ${comparisons.join(
+                  ""
+                )}</div>`;
+              }
+            }
+          }
+
+          // Cost summary with ferry cost
+          let costHtml = "";
+          const hasCost = route.metrics.total_cost > 0;
+          const ferryCost = route.metrics.ferry_cost || 0;
+
+          // === BUILD FILTER FEEDBACK HTML ===
+          let filterFeedbackHtml = "";
+          if (route.filter_feedback && route.filter_feedback.length > 0) {
+            filterFeedbackHtml = '<div class="filter-feedback-container">';
+            route.filter_feedback.forEach((fb) => {
+              filterFeedbackHtml += `
+                <div class="filter-badge ${fb.type}">
+                  <span class="badge-icon">${fb.icon}</span>
+                  <span>${fb.text}</span>
+                </div>
+              `;
+            });
+            filterFeedbackHtml += "</div>";
+          }
+
+          if (hasCost) {
+            costHtml = `
+              <div class="cost-summary">
+                <div class="cost-row">
+                  <span class="cost-label">⚡ Tiền sạc</span>
+                  <span class="cost-value">${formatCurrency(
+                    route.metrics.charging_cost || 0
+                  )}</span>
+                </div>
+                <div class="cost-row">
+                  <span class="cost-label">🚰 Phí cầu đường</span>
+                  <span class="cost-value">${formatCurrency(
+                    route.metrics.toll_cost || 0
+                  )}</span>
+                </div>
+                ${
+                  ferryCost > 0
+                    ? `
+                <div class="cost-row">
+                  <span class="cost-label">🚢 Phí phà</span>
+                  <span class="cost-value">${formatCurrency(ferryCost)}</span>
+                </div>
+                `
+                    : ""
+                }
+                <div class="cost-row">
+                  <span class="cost-label">Tổng chi phí</span>
+                  <span class="cost-value total">${formatCurrency(
+                    route.metrics.total_cost
+                  )}</span>
+                </div>
+              </div>
+            `;
+          } else {
+            costHtml = `
+              <div class="cost-summary" style="background: #D1FAE5; border-color: #6EE7B7;">
+                <div class="free-route-badge">
+                  <span>✅</span>
+                  <span>Miễn phí cầu đường & phà</span>
+                </div>
+              </div>
+            `;
+          }
+
+          card.innerHTML = `
+            <!-- Card Header -->
+            <div class="card-header">
+              <span class="route-name">${route.name}</span>
+              ${isBest ? '<span class="badge">Tốt nhất</span>' : ""}
+            </div>
+
+            <!-- Stats Grid -->
+            <div class="stats-grid">
+              <div class="stat-item">
+                <div class="stat-label">Quãng đường</div>
+                <div class="stat-value">${route.metrics.total_distance} km</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-label">Thời gian</div>
+                <div class="stat-value">${route.metrics.total_time} phút</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-label">Số lần sạc</div>
+                <div class="stat-value">${route.metrics.num_charges}</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-label">Pin còn lại</div>
+                <div class="stat-value">${route.metrics.final_battery}%</div>
+              </div>
+            </div>
+
+            <!-- Comparison Context (for non-best routes) -->
+            ${comparisonHtml}
+
+            <!-- Filter Feedback (hiệu quả bộ lọc) -->
+            ${filterFeedbackHtml}
+
+            <!-- Cost Summary -->
+            ${costHtml}
+
+            <!-- Tabs -->
+            <div class="card-tabs">
+              <button class="card-tab active" data-tab="overview" onclick="switchTab(${index}, 'overview')">Tổng quan</button>
+              <button class="card-tab" data-tab="events" onclick="switchTab(${index}, 'events')">Sự kiện</button>
+              <button class="card-tab" data-tab="charging" onclick="switchTab(${index}, 'charging')">Trạm sạc</button>
+              <button class="card-tab" data-tab="directions" onclick="switchTab(${index}, 'directions')">Chỉ dẫn</button>
+            </div>
+
+            <!-- Tab Contents -->
+            <div class="tab-content active" data-tab="overview">
+              <div class="overview-item">
+                <span class="overview-label">Tổng quãng đường</span>
+                <span class="overview-value">${
+                  route.metrics.total_distance
+                } km</span>
+              </div>
+              <div class="overview-item">
+                <span class="overview-label">Tổng thời gian</span>
+                <span class="overview-value">${
+                  route.metrics.total_time
+                } phút</span>
+              </div>
+              <div class="overview-item">
+                <span class="overview-label">Số lần sạc</span>
+                <span class="overview-value">${
+                  route.metrics.num_charges
+                } lần</span>
+              </div>
+              <div class="overview-item">
+                <span class="overview-label">Pin cuối hành trình</span>
+                <span class="overview-value">${
+                  route.metrics.final_battery
+                }%</span>
+              </div>
+              ${
+                route.metrics.total_cost
+                  ? `
+              <div class="overview-item">
+                <span class="overview-label">Tổng chi phí ước tính</span>
+                <span class="overview-value">${formatCurrency(
+                  route.metrics.total_cost
+                )}</span>
+              </div>
+              `
+                  : ""
+              }
+              ${reasonHtml}
+            </div>
+
+            <div class="tab-content" data-tab="events">
+              ${buildTravelEventsHtml(route.travel_events)}
+            </div>
+
+            <div class="tab-content" data-tab="charging">
+              <div class="charging-timeline">
+                ${chargingHtml}
+              </div>
+            </div>
+
+            <div class="tab-content" data-tab="directions">
+              ${directionsHtml}
+            </div>
           `;
 
-          listContent.appendChild(item);
+          container.appendChild(card);
         });
       }
 
-      function showRouteDetail(index) {
-        const route = currentRoutes[index];
-
-        // Highlight selected
-        document.querySelectorAll(".route-list-item").forEach((item, i) => {
-          item.classList.toggle("active", i === index);
-        });
-
-        // Show detail chart
-        if (route.detail_chart) {
-          document.getElementById("detailCharts").style.display = "block";
-          document.getElementById(
-            "detailChartsContent"
-          ).innerHTML = `<h4 style="margin-bottom: 15px;">${route.name}</h4>
-                     <img src="${route.detail_chart}" alt="Detail Chart" style="max-width: 100%; border-radius: 8px;">`;
-        } else {
-          document.getElementById("detailCharts").style.display = "none";
-        }
-      }
-
-      function toggleRoute(index) {
-        const content = document.getElementById(`route-content-${index}`);
-
-        if (content.style.display === "none") {
-          // Đóng tất cả
-          document
-            .querySelectorAll(".route-content")
-            .forEach((c) => (c.style.display = "none"));
-          // Mở route hiện tại
-          content.style.display = "block";
-        } else {
-          content.style.display = "none";
-        }
-      }
-
-      // Enter key support
+      // === ENTER KEY SUPPORT ===
       document
         .getElementById("start")
         .addEventListener("keypress", function (e) {
@@ -1483,7 +3321,7 @@
         if (e.key === "Enter") findRoute();
       });
 
-      // Initialize
+      // === INITIALIZE ===
       updateKmRemaining();
     </script>
   </body>
