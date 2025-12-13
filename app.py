@@ -49,6 +49,43 @@ def get_cache_key(start_coords, end_coords, options=None):
 DEFAULT_PRICE_PER_KWH = 3500  # VND/kWh
 DEFAULT_TOLL_FEE = 35000      # VND/trạm (mức trung bình)
 
+# ... (sau các dòng import) ...
+
+# ==============================================================================
+#  DANH SÁCH ĐIỂM NEO VIỆT NAM (TRÁNH LÀO/CAMPUCHIA/BIỂN)
+# ==============================================================================
+# Danh sách các thành phố dọc trục Bắc Nam để "kéo" lộ trình vào đất liền
+VIETNAM_ANCHORS = [
+    (21.0285, 105.8542), # Hà Nội
+    (19.8073, 105.7763), # Thanh Hóa
+    (18.6733, 105.6875), # Vinh
+    (17.4765, 106.6276), # Đồng Hới
+    (16.4637, 107.5909), # Huế
+    (16.0544, 108.2022), # Đà Nẵng
+    (15.2413, 108.8044), # Quảng Ngãi
+    (13.7830, 109.2197), # Quy Nhơn
+    (13.0882, 109.3025), # Tuy Hòa
+    (12.2388, 109.1967), # Nha Trang
+    (11.5753, 108.9946), # Phan Rang
+    (10.9279, 108.1026), # Phan Thiết
+    (10.7626, 106.6602), # TP.HCM
+    (10.0452, 105.7469), # Cần Thơ
+    (9.1834, 105.1524)   # Cà Mau
+]
+
+def find_nearest_anchor(lat, lon):
+    """Tìm thành phố mốc gần nhất với một tọa độ bất kỳ"""
+    best_anchor = None
+    min_dist = float('inf')
+    
+    for anchor in VIETNAM_ANCHORS:
+        # Dùng công thức Pythagoras đơn giản để nhanh (hoặc geodesic nếu muốn chính xác tuyệt đối)
+        dist = (anchor[0] - lat)**2 + (anchor[1] - lon)**2
+        if dist < min_dist:
+            min_dist = dist
+            best_anchor = anchor
+            
+    return best_anchor
 app = Flask(__name__)
 
 # --- 1. LOAD DỮ LIỆU TỪ MONGODB & CACHE ---
@@ -473,77 +510,72 @@ def get_route(start_coords, end_coords, options=None):
     
     return routes, error
 
-
 def get_route_chunked(start_coords, end_coords, options, total_distance_km):
     """
-    CHUNKING STRATEGY: Chia nhỏ route dài thành nhiều đoạn
-    - Tìm điểm trung gian (midpoint)
-    - Lấy route từng đoạn
-    - Ghép (merge) kết quả lại
+    CHUNKING STRATEGY V2: Dùng điểm neo (Anchors)
+    - Thay vì lấy trung điểm hình học (dễ rơi vào Lào/Biển),
+    - Ta lấy thành phố lớn gần trung điểm nhất làm điểm trung gian.
     """
-    print(f"🔀 Chunking: Chia route thành 2 đoạn...")
+    print(f"🔀 Chunking V2: Tìm điểm neo trong nước...")
     
-    # Tính điểm giữa (midpoint)
+    # 1. Tính điểm giữa hình học (đang có thể ở Biển/Lào)
     mid_lat = (start_coords[0] + end_coords[0]) / 2
     mid_lon = (start_coords[1] + end_coords[1]) / 2
-    mid_coords = (round(mid_lat, 5), round(mid_lon, 5))
     
-    print(f"   📍 Điểm trung gian: {mid_coords[0]:.4f}, {mid_coords[1]:.4f}")
+    # 2. "Kéo" điểm giữa đó về thành phố gần nhất của Việt Nam
+    anchor_coords = find_nearest_anchor(mid_lat, mid_lon)
     
-    # Lấy route đoạn 1: Start -> Midpoint
-    print(f"   🔄 Đoạn 1: Start -> Midpoint...")
-    result1 = get_route_single(start_coords, mid_coords, options, total_distance_km / 2)
+    print(f"   📍 Điểm giữa hình học: {mid_lat:.4f}, {mid_lon:.4f}")
+    print(f"   ⚓ Điểm neo chọn được: {anchor_coords}")
+    
+    # 3. Lấy route đoạn 1: Start -> ANCHOR
+    print(f"   🔄 Đoạn 1: Start -> Anchor...")
+    # Ước lượng khoảng cách đoạn 1 (để tính timeout/logic)
+    dist1 = geodesic(start_coords, anchor_coords).km
+    result1 = get_route_single(start_coords, anchor_coords, options, dist1)
     routes_part1 = result1[0] if isinstance(result1, tuple) else result1
     
     if not routes_part1:
-        print(f"   ❌ Không lấy được route đoạn 1, thử route đầy đủ...")
-        result_full = get_route_single(start_coords, end_coords, options, total_distance_km)
-        if isinstance(result_full, tuple):
-            return result_full
-        return result_full, None if result_full else "Không thể lấy route"
+        print(f"   ❌ Lỗi đoạn 1, fallback sang route thẳng...")
+        # Nếu không đi được đến Anchor (hiếm), thử route thẳng
+        return get_route_single(start_coords, end_coords, options, total_distance_km)
     
-    time.sleep(1)  # Đợi 1s giữa 2 request
+    time.sleep(0.5) 
     
-    # Lấy route đoạn 2: Midpoint -> End
-    print(f"   🔄 Đoạn 2: Midpoint -> End...")
-    result2 = get_route_single(mid_coords, end_coords, options, total_distance_km / 2)
+    # 4. Lấy route đoạn 2: ANCHOR -> End
+    print(f"   🔄 Đoạn 2: Anchor -> End...")
+    dist2 = geodesic(anchor_coords, end_coords).km
+    result2 = get_route_single(anchor_coords, end_coords, options, dist2)
     routes_part2 = result2[0] if isinstance(result2, tuple) else result2
     
     if not routes_part2:
-        print(f"   ❌ Không lấy được route đoạn 2, thử route đầy đủ...")
-        result_full = get_route_single(start_coords, end_coords, options, total_distance_km)
-        if isinstance(result_full, tuple):
-            return result_full
-        return result_full, None if result_full else "Không thể lấy route"
+        print(f"   ❌ Lỗi đoạn 2, fallback...")
+        return get_route_single(start_coords, end_coords, options, total_distance_km)
     
-    # === MERGE KẾT QUẢ ===
-    print(f"   ✅ Ghép 2 đoạn route...")
+    # === MERGE KẾT QUẢ (Giữ nguyên logic cũ) ===
+    print(f"   ✅ Ghép lộ trình qua điểm neo...")
     
     merged_routes = []
-    for i, (r1, r2) in enumerate(zip(routes_part1, routes_part2)):
-        # Decode polyline
-        coords1 = polyline.decode(r1['geometry'])
-        coords2 = polyline.decode(r2['geometry'])
+    # Lấy 1 route tốt nhất mỗi đoạn để ghép (để đơn giản hóa)
+    r1 = routes_part1[0]
+    r2 = routes_part2[0]
         
-        # Ghép coords (bỏ điểm cuối r1 vì trùng với điểm đầu r2)
-        merged_coords = coords1[:-1] + coords2
-        
-        # Encode lại thành polyline
-        merged_geometry = polyline.encode(merged_coords)
-        
-        # Merge steps
-        merged_steps = r1.get('steps', []) + r2.get('steps', [])
-        
-        merged_routes.append({
-            "geometry": merged_geometry,
-            "distance": r1['distance'] + r2['distance'],
-            "duration": r1['duration'] + r2['duration'],
-            "steps": merged_steps
-        })
+    coords1 = polyline.decode(r1['geometry'])
+    coords2 = polyline.decode(r2['geometry'])
     
-    print(f"   ✅ Ghép thành công {len(merged_routes)} route(s)")
+    # Ghép coords
+    merged_coords = coords1[:-1] + coords2
+    merged_geometry = polyline.encode(merged_coords)
+    merged_steps = r1.get('steps', []) + r2.get('steps', [])
+    
+    merged_routes.append({
+        "geometry": merged_geometry,
+        "distance": r1['distance'] + r2['distance'],
+        "duration": r1['duration'] + r2['duration'],
+        "steps": merged_steps
+    })
+    
     return merged_routes, None
-
 
 def get_route_from_mapbox(start_coords, end_coords):
     """
@@ -736,19 +768,28 @@ def get_route_single(start_coords, end_coords, options, distance_km):
                 if osrm_code == "Ok" and data.get("routes"):
                     routes = []
                     for route in data["routes"][:2]:
+                        # === 1. LOGIC MỚI: KIỂM TRA "VƯỢT BIỂN" ===
+                        # Tính tổng quãng đường đi phà trong lộ trình này
+                        legs = route.get("legs", [])
+                        total_ferry_dist = 0
+                        for leg in legs:
+                            for step in leg.get("steps", []):
+                                if step.get("maneuver", {}).get("type") == "ferry":
+                                    total_ferry_dist += step.get("distance", 0)
+                        
+                        # Nếu tổng quãng đường phà > 5km -> Coi là vượt biển vô lý -> Bỏ qua
+                        # (Trừ khi người dùng KHÔNG chọn tránh phà thì có thể nới lỏng điều kiện này nếu muốn)
+                        if total_ferry_dist > 5000: # 5000 mét = 5km
+                            print(f"   ⚠️ Bỏ qua lộ trình có phà dài {total_ferry_dist}m (Nghi vấn vượt biển)")
+                            continue
+
+                        # === 2. NẾU HỢP LỆ THÌ MỚI THÊM VÀO LIST ===
                         routes.append({
                             "geometry": route["geometry"],
                             "distance": route["distance"],
                             "duration": route["duration"],
                             "steps": route.get("legs", [{}])[0].get("steps", [])
                         })
-                    
-                    if level > 0:
-                        print(f"   ✅ Thành công ở Level {level} (giảm tải)")
-                    else:
-                        print(f"   ✅ Nhận được {len(routes)} route(s)")
-                    
-                    return routes
                 else:
                     error_msg = data.get("message", "Không tìm thấy đường đi")
                     print(f"   ⚠️ OSRM response: {osrm_code} - {error_msg}")
@@ -1103,21 +1144,21 @@ def find_highway_stations_on_route(route_coords, max_distance_km=0.1):
     return highways_on_route
 
 
+def calculate_real_path_length(coords_segment):
+    """Tính tổng chiều dài thực tế (km) của một đoạn đường bao gồm các khúc cua"""
+    total_km = 0.0
+    for i in range(len(coords_segment) - 1):
+        total_km += geodesic(coords_segment[i], coords_segment[i+1]).km
+    return total_km
+
 def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, config, priority='time'):
     """
-    Thuật toán A* tối ưu lộ trình cho xe điện
-    
-    BỔ SUNG V2.0:
-    - travel_events: Danh sách chi tiết mọi sự kiện trên đường (toll, ferry, charging)
-    - Chi phí sạc (charging_cost) + Phí cầu đường (toll_cost) + Phí phà (ferry_cost)
-    - Infeasibility Reporting: Trả về object lỗi chi tiết thay vì None
-    
-    Returns:
-        Tuple (result_dict, error_dict):
-        - Thành công: (result, None)
-        - Thất bại: (None, error_info)
+    Thuật toán A* tối ưu lộ trình cho xe điện - Phiên bản High Fidelity
+    Đã sửa: Tính khoảng cách thực tế (Real Path Length) thay vì Chim bay
     """
-    route_distance = geodesic(start_coords, end_coords).km * 1.3
+    # === SỬA: TÍNH TỔNG KHOẢNG CÁCH CHÍNH XÁC TỪ POLYLINE ===
+    route_distance = calculate_real_path_length(route_coords)
+    
     battery_percent = start_battery
     charging_stops = []
     total_distance = 0
@@ -1128,69 +1169,83 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
     total_ferry_cost = 0     # Tổng phí phà (VND)
     
     # === TRAVEL EVENTS LOG ===
-    # Mỗi event: {type, name, cost, km, details}
     travel_events = []
     
-    # TĂNG SỐ KM MỖI CHECKPOINT ĐỂ GIẢM SỐ LƯỢNG TÍNH TOÁN
-    num_checkpoints = max(2, int(route_distance / 150))
-    checkpoint_step = max(1, len(route_coords) // num_checkpoints)
-    checkpoints = [start_coords]
-    for i in range(checkpoint_step, len(route_coords), checkpoint_step):
-        checkpoints.append(route_coords[i])
-    checkpoints.append(end_coords)
+    # === LOGIC CHIA CHECKPOINT MỚI (DỰA TRÊN KHOẢNG CÁCH THỰC TẾ) ===
+    step_size_km = 150 # Mỗi 150km đặt 1 checkpoint
     
-    print(f"⚡ Tối ưu: {len(checkpoints)} checkpoints cho {route_distance:.0f}km")
+    # Tạo checkpoints dựa trên Index của route_coords để lấy đúng đoạn đường cong
+    checkpoints_indices = [0] # Luôn bắt đầu từ 0
+    current_dist_acc = 0
     
-    for i in range(len(checkpoints) - 1):
-        current_checkpoint = checkpoints[i]
-        segment_dist = geodesic(checkpoints[i], checkpoints[i+1]).km
+    for i in range(1, len(route_coords)):
+        # Cộng dồn khoảng cách từng điểm nhỏ
+        dist = geodesic(route_coords[i-1], route_coords[i]).km
+        current_dist_acc += dist
+        
+        # Nếu tích lũy đủ 150km
+        if current_dist_acc >= step_size_km:
+            checkpoints_indices.append(i)
+            current_dist_acc = 0 # Reset bộ đếm
+            
+    # Luôn thêm điểm cuối cùng nếu chưa có
+    if checkpoints_indices[-1] != len(route_coords) - 1:
+        checkpoints_indices.append(len(route_coords) - 1)
+
+    print(f"⚡ Tối ưu: {len(checkpoints_indices)-1} chặng cho {route_distance:.1f}km thực tế")
+    
+    # Tạo danh sách tọa độ checkpoints để dùng cho logic cũ nếu cần
+    checkpoints = [route_coords[idx] for idx in checkpoints_indices]
+
+    # VÒNG LẶP XỬ LÝ TỪNG CHẶNG
+    for i in range(len(checkpoints_indices) - 1):
+        idx_start = checkpoints_indices[i]
+        idx_end = checkpoints_indices[i+1]
+        
+        current_checkpoint_coords = route_coords[idx_start]
+        
+        # === QUAN TRỌNG: TÍNH KHOẢNG CÁCH THỰC TẾ CỦA CHẶNG NÀY ===
+        # Lấy đoạn coords con từ idx_start đến idx_end
+        segment_coords = route_coords[idx_start : idx_end + 1]
+        segment_dist = calculate_real_path_length(segment_coords)
+        
         battery_needed = calculate_battery_consumption(segment_dist, config)
         
         # Kiểm tra nếu pin không đủ để đi đến checkpoint tiếp theo
         if battery_percent - battery_needed < config['min_battery']:
-            reachable = find_nearest_reachable_station(checkpoints[i], battery_percent, config)
+            # Tìm trạm sạc gần checkpoint hiện tại (đầu đoạn)
+            reachable = find_nearest_reachable_station(current_checkpoint_coords, battery_percent, config)
             
-            # === INFEASIBILITY REPORTING - DETAILED ===
+            # === INFEASIBILITY REPORTING ===
             if not reachable:
-                # Tính toán thêm thông tin hữu ích
+                # Tính toán lại các thông số lỗi dựa trên khoảng cách thực tế
                 max_range_km = (battery_percent / 100) * config['battery_capacity'] / config['consumption']
                 
-                # Trả về object lỗi chi tiết để Frontend hiển thị
                 error_info = {
                     "error": "infeasible",
                     "error_type": "no_reachable_station",
                     "severity": "critical",
-                    
-                    # Thông tin vị trí
                     "location": {
-                        "coords": list(current_checkpoint) if isinstance(current_checkpoint, tuple) else current_checkpoint,
+                        "coords": list(current_checkpoint_coords),
                         "km_from_start": round(total_distance, 1),
                         "km_to_destination": round(route_distance - total_distance, 1)
                     },
-                    
-                    # Thông tin pin
                     "battery_state": {
                         "current_percent": round(battery_percent, 1),
                         "needed_percent": round(battery_needed, 1),
                         "max_range_km": round(max_range_km, 1),
                         "deficit_percent": round(battery_needed - battery_percent, 1)
                     },
-                    
-                    # Thông tin chặng
                     "segment_info": {
                         "distance_km": round(segment_dist, 1),
                         "checkpoint_index": i,
                         "total_checkpoints": len(checkpoints)
                     },
-                    
-                    # Gợi ý cho người dùng
                     "suggestions": [
                         f"Sạc pin lên ít nhất {min(100, battery_needed + 20):.0f}% trước khi xuất phát",
                         "Chọn xe có dung lượng pin lớn hơn",
                         "Thử tuyến đường khác có nhiều trạm sạc hơn"
                     ],
-                    
-                    # Message chính
                     "message": f"🔋 Hết pin tại km {total_distance:.0f}!",
                     "details": f"Pin còn {battery_percent:.1f}% (đi được ~{max_range_km:.0f}km), nhưng cần {battery_needed:.1f}% để đi tiếp {segment_dist:.1f}km. Không có trạm sạc nào trong tầm với."
                 }
@@ -1199,9 +1254,12 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
             station = reachable[0]['station']
             battery_on_arrival = reachable[0]['battery_on_arrival']
             
+            # Lấy danh sách các điểm neo còn lại để tính tối ưu sạc
+            remaining_path_sample = [route_coords[idx] for idx in checkpoints_indices[i:]]
+            
             # ========== TỐI ƯU THÔNG MINH: CHỈ SẠC VỪA ĐỦ =========
             target_battery = calculate_optimal_charge_target(
-                checkpoints[i:],
+                remaining_path_sample,
                 station,
                 battery_on_arrival,
                 config
@@ -1222,7 +1280,6 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
                 'end_charge': target_battery,
                 'charge_time': round(charge_time, 1),
                 'distance_from_start': round(total_distance + reachable[0]['distance'], 1),
-                # Thêm thông tin chi phí
                 'energy_kwh': round(energy_kwh, 2),
                 'charging_cost': round(charging_cost, 0),
                 'price_per_kwh': station.get('price_per_kwh', DEFAULT_PRICE_PER_KWH)
@@ -1235,6 +1292,7 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
                 'name': station.get('name', 'Trạm sạc'),
                 'cost': round(charging_cost, 0),
                 'km': round(total_distance + reachable[0]['distance'], 1),
+                'coords': [station['lat'], station['lon']],
                 'details': {
                     'energy_kwh': round(energy_kwh, 2),
                     'charge_time_min': round(charge_time, 1),
@@ -1244,15 +1302,22 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
                 }
             })
             
+            # Cập nhật trạng thái sau khi sạc
             battery_percent = target_battery
-            total_distance += reachable[0]['distance']
+            total_distance += reachable[0]['distance'] # Cộng quãng đường đi vào trạm
             
-            segment_dist = geodesic((station['lat'], station['lon']), checkpoints[i+1]).km
-            battery_needed = calculate_battery_consumption(segment_dist, config)
+            # Tính lại quãng đường từ trạm sạc đến điểm cuối đoạn (checkpoint tiếp theo)
+            # Ở đây dùng geodesic tạm thời cho đoạn ngắn từ trạm ra đường chính + đoạn còn lại
+            # Để đơn giản và an toàn, ta coi như xe quay lại lộ trình và đi tiếp
+            # Battery needed cho đoạn còn lại của segment (sau khi đã đi được một chút vào trạm)
+            # Ta reset lại battery_needed dựa trên segment_dist gốc (chấp nhận sai số nhỏ có lợi cho an toàn)
+            
         
+        # Trừ pin cho đoạn đường thực tế
         battery_percent -= battery_needed
         total_distance += segment_dist
         
+        # Kiểm tra cạn pin
         if battery_percent < 0:
             # Tính deficit
             battery_deficit = abs(battery_percent)
@@ -1262,31 +1327,26 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
                 "error": "infeasible",
                 "error_type": "battery_depleted",
                 "severity": "critical",
-                
                 "location": {
-                    "coords": list(checkpoints[i+1]) if isinstance(checkpoints[i+1], tuple) else checkpoints[i+1],
+                    "coords": list(route_coords[idx_end]),
                     "km_from_start": round(total_distance, 1),
                     "km_to_destination": round(route_distance - total_distance, 1)
                 },
-                
                 "battery_state": {
                     "current_percent": 0,
                     "deficit_percent": round(battery_deficit, 1),
                     "additional_range_needed_km": round(additional_range_needed, 1)
                 },
-                
                 "progress": {
                     "completed_km": round(total_distance, 1),
                     "total_km": round(route_distance, 1),
                     "completion_percent": round((total_distance / route_distance) * 100, 1)
                 },
-                
                 "suggestions": [
                     "Sạc đầy pin (100%) trước khi xuất phát",
                     "Chọn xe có dung lượng pin lớn hơn hoặc tiêu hao thấp hơn",
                     "Chia chuyến đi thành nhiều chặng ngắn hơn"
                 ],
-                
                 "message": f"🪫 Pin cạn kiệt tại km {total_distance:.1f}!",
                 "details": f"Chuyến đi đã hoàn thành {(total_distance/route_distance)*100:.0f}%. Cần thêm ~{additional_range_needed:.0f}km tầm xa để đến đích."
             }
@@ -1528,7 +1588,8 @@ def find_next_better_station(current_pos, max_distance_km, current_power, config
 
 def add_route_to_map(map_obj, route_coords, charging_stops, travel_events=None, color="blue", label=""):
     """
-    Thêm route và CÁC SỰ KIỆN (Thu phí, Phà, Trạm dừng) lên bản đồ
+    Thêm route và CÁC SỰ KIỆN (Thu phí, Phà, Trạm dừng) lên bản đồ.
+    Đã sửa: Vẽ Full tọa độ để bám sát đường đi thực tế.
     
     Args:
         map_obj: Folium map object
@@ -1538,17 +1599,16 @@ def add_route_to_map(map_obj, route_coords, charging_stops, travel_events=None, 
         color: Màu đường đi
         label: Nhãn route
     """
-    # 1. VẼ ĐƯỜNG ĐI (Polyline) - Tối ưu số điểm
-    step = max(1, len(route_coords) // 100)
-    sampled_coords = route_coords[::step]
+    # 1. VẼ ĐƯỜNG ĐI (Polyline) - KHÔNG LẤY MẪU (NO SAMPLING)
+    # Thay vì lấy mẫu 100 điểm, ta vẽ toàn bộ điểm để đường cong mềm mại
     
     folium.PolyLine(
-        sampled_coords, 
+        route_coords,  # <--- Dùng trực tiếp toàn bộ danh sách tọa độ gốc
         color=color, 
         weight=5,
         opacity=0.7,
         popup=label, 
-        smooth_factor=3.0
+        smooth_factor=1.0  # <--- Giảm xuống 1.0 để Folium không tự động làm thẳng các khúc cua
     ).add_to(map_obj)
     
     # 2. ĐIỂM XUẤT PHÁT & ĐÍCH
@@ -1607,7 +1667,7 @@ def add_route_to_map(map_obj, route_coords, charging_stops, travel_events=None, 
                 """
                 folium.Marker(
                     coords,
-                    icon=folium.Icon(color="red", icon="money-bill", prefix='fa'),
+                    icon=folium.Icon(color="red", icon="money-bill", prefix='fa', icon_size=(12, 12)), # Chỉnh icon to hơn xíu để dễ nhìn
                     popup=folium.Popup(popup_content, max_width=200),
                     tooltip=f"💰 {event['name']}"
                 ).add_to(map_obj)
@@ -1624,7 +1684,7 @@ def add_route_to_map(map_obj, route_coords, charging_stops, travel_events=None, 
                 """
                 folium.Marker(
                     coords,
-                    icon=folium.Icon(color="blue", icon="ship", prefix='fa'),
+                    icon=folium.Icon(color="blue", icon="ship", prefix='fa', icon_size=(12, 12)),
                     popup=folium.Popup(popup_content, max_width=200),
                     tooltip=f"🚢 {event['name']}"
                 ).add_to(map_obj)
@@ -1644,7 +1704,9 @@ def add_route_to_map(map_obj, route_coords, charging_stops, travel_events=None, 
                     popup=folium.Popup(popup_content, max_width=200),
                     tooltip=f"🛣️ {event['name']}"
                 ).add_to(map_obj)
-        
+
+
+
 def create_comparison_chart(routes_data):
     if not routes_data: return None
     plt.rcParams['font.family'] = 'DejaVu Sans'
