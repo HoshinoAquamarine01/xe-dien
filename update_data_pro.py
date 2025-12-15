@@ -13,6 +13,9 @@ import json
 import os
 import re
 from pymongo import MongoClient
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ==============================================================================
 # CẤU HÌNH
@@ -22,7 +25,7 @@ JSON_FILES = {
     'toll_stations': 'ev_database.toll_stations.json',
     'ferry_stations': 'BanDo_Pha.json'
 }
-DB_CONNECTION = 'mongodb+srv://lamvcdev_db_user:t2iM4x2vv14XnyFb@cluster0.fuvalf2.mongodb.net/ev_database'
+DB_CONNECTION = os.getenv('MONGO_URI')
 DB_NAME = 'ev_database'
 
 # ==============================================================================
