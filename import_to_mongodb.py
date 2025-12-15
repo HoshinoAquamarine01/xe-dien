@@ -3,7 +3,7 @@ from pymongo import MongoClient
 from bson import json_util  # Import thư viện xử lý đặc biệt của MongoDB
 
 # 1. Kết nối MongoDB
-client = MongoClient('mongodb://localhost:27017/')
+client = MongoClient('mongodb+srv://lamvcdev_db_user:t2iM4x2vv14XnyFb@cluster0.fuvalf2.mongodb.net/')
 db = client['ev_database']
 
 # 2. Danh sách file
