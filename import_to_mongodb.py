@@ -1,9 +1,13 @@
 import os
 from pymongo import MongoClient
 from bson import json_util  # Import thư viện xử lý đặc biệt của MongoDB
+from dotenv import load_dotenv
+
+load_dotenv()
+MONGO_URI = os.getenv('MONGO_URI')
 
 # 1. Kết nối MongoDB
-client = MongoClient('mongodb+srv://lamvcdev_db_user:t2iM4x2vv14XnyFb@cluster0.fuvalf2.mongodb.net/')
+client = MongoClient(MONGO_URI)
 db = client['ev_database']
 
 # 2. Danh sách file

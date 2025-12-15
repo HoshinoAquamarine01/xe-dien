@@ -18,6 +18,8 @@ from pymongo import MongoClient
 import time
 import traceback
 import hashlib
+import os
+from dotenv import load_dotenv
 from functools import lru_cache
 
 # --- THƯ VIỆN TỐI ƯU ---
@@ -64,10 +66,13 @@ DEFAULT_TOLL_FEE = 35000      # VND/trạm (mức trung bình)
 
 app = Flask(__name__)
 
+load_dotenv()
+MONGO_URI = os.getenv('MONGO_URI')
+
 # --- 1. LOAD DỮ LIỆU TỪ MONGODB & CACHE ---
 print("Đang tải dữ liệu trạm sạc từ MongoDB...")
 try:
-    client = MongoClient('mongodb+srv://lamvcdev_db_user:t2iM4x2vv14XnyFb@cluster0.fuvalf2.mongodb.net/ev_database', maxPoolSize=1, serverSelectionTimeoutMS=2000)
+    client = MongoClient(MONGO_URI, maxPoolSize=1, serverSelectionTimeoutMS=2000)
     db = client['ev_database']
 
     # Load trạm sạc
