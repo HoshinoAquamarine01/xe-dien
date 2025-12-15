@@ -27,6 +27,8 @@
         --secondary-light: #60a5fa;
         --alert: #ef4444;
         --warning: #f59e0b;
+        --risk: #f94f16;
+        --danger: #3A2152;
         --dark: #111827;
         --gray-900: #1f2937;
         --gray-700: #374151;
@@ -3104,10 +3106,43 @@
           if (elapsed > 30) {
             timerEl.style.color = "var(--warning)";
           }
+          if (elapsed > 120) {
+            timerEl.style.color = "var(--risk)";
+          }
+          if (elapsed > 180) {
+            timerEl.style.color = "var(--danger)";
+          }
         }
 
         // Auto-update loading steps based on elapsed time
         updateLoadingStepsAuto(elapsed);
+
+        // Timeout protection: Stop after 5 minutes (300 seconds)
+        if (elapsed >= 300) {
+          clearInterval(loadingInterval);
+          loadingInterval = null;
+
+          showError(
+            "timeout",
+            "Quá thời gian tìm kiếm",
+            "Hệ thống đã tìm kiếm quá 5 phút nhưng chưa tìm được lộ trình phù hợp.",
+            [
+              "Thử với quãng đường ngắn hơn",
+              "Tăng % pin khởi đầu",
+              "Kiểm tra kết nối mạng và thử lại",
+              "Liên hệ quản trị viên nếu vấn đề tiếp diễn",
+            ]
+          );
+
+          document.getElementById("searchBtn").disabled = false;
+
+          showToast(
+            "error",
+            "Đã hết thời gian chờ",
+            "Tìm kiếm quá 5 phút - vui lòng thử lại với tham số khác",
+            6000
+          );
+        }
       }
 
       // === LOADING STEPS MANAGEMENT ===

@@ -1,7 +1,7 @@
 const { MongoClient } = require('mongodb');
 const fs = require('fs');
 
-const uri = 'mongodb://localhost:27017';
+const uri = 'mongodb+srv://lamvcdev_db_user:t2iM4x2vv14XnyFb@cluster0.fuvalf2.mongodb.net/';
 const client = new MongoClient(uri);
 
 async function importData() {

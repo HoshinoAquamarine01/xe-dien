@@ -67,7 +67,7 @@ app = Flask(__name__)
 # --- 1. LOAD DỮ LIỆU TỪ MONGODB & CACHE ---
 print("Đang tải dữ liệu trạm sạc từ MongoDB...")
 try:
-    client = MongoClient('mongodb://localhost:27017/', maxPoolSize=1, serverSelectionTimeoutMS=2000)
+    client = MongoClient('mongodb+srv://lamvcdev_db_user:t2iM4x2vv14XnyFb@cluster0.fuvalf2.mongodb.net/ev_database', maxPoolSize=1, serverSelectionTimeoutMS=2000)
     db = client['ev_database']
 
     # Load trạm sạc
@@ -2528,14 +2528,35 @@ def find_route():
                 ]
             }), 400
         
+        if direct_distance > 5000:
+            print(f"LỖI: Khoảng cách quá xa ({direct_distance:.0f}km > 5000km)")
+            return jsonify({
+                "error": "Khoảng cách quá xa hoặc điểm đến ngoài Việt Nam",
+                "error_type": "distance_too_far",
+                "details": f"Khoảng cách đường chim bay: {direct_distance:.0f}km. Hệ thống chỉ hỗ trợ lộ trình trong phạm vi Việt Nam (< 5000km).",
+                "route_info": {
+                    "start": start_addr,
+                    "end": end_addr,
+                    "start_coords": f"{start_coords[0]:.4f}, {start_coords[1]:.4f}",
+                    "end_coords": f"{end_coords[0]:.4f}, {end_coords[1]:.4f}",
+                    "direct_distance_km": round(direct_distance, 1)
+                },
+                "suggestions": [
+                    "Kiểm tra lại địa chỉ điểm đến có đúng không",
+                    "Đảm bảo cả hai điểm đều nằm trong lãnh thổ Việt Nam",
+                    "Có thể bạn đã nhập nhầm quốc gia hoặc châu lục",
+                    "Thử nhập lại với tên thành phố/tỉnh cụ thể ở Việt Nam"
+                ]
+            }), 400
+        
         if direct_distance > 1500:
-            print(f"⚠️ CẢNH BÁO: Quãng đường rất xa ({direct_distance:.0f}km)")
+            print(f"CẢNH BÁO: Quãng đường rất xa ({direct_distance:.0f}km)")
         
         # GET ROUTE
         route_start = time.time()
-        print(f"🔄 Đang lấy route từ Goong API...")
+        print(f"Đang lấy route từ Goong API...")
         base_routes, route_error = get_route(start_coords, end_coords, data)
-        print(f"⏱️ Routing API: {time.time() - route_start:.1f}s")
+        print(f"Routing API: {time.time() - route_start:.1f}s")
         
         if not base_routes:
             print(f"❌ Không thể lấy route từ Goong/Mapbox")

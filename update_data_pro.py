@@ -22,7 +22,7 @@ JSON_FILES = {
     'toll_stations': 'ev_database.toll_stations.json',
     'ferry_stations': 'BanDo_Pha.json'
 }
-DB_CONNECTION = 'mongodb://localhost:27017/'
+DB_CONNECTION = 'mongodb+srv://lamvcdev_db_user:t2iM4x2vv14XnyFb@cluster0.fuvalf2.mongodb.net/ev_database'
 DB_NAME = 'ev_database'
 
 # ==============================================================================
