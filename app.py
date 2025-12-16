@@ -1,4 +1,3 @@
-import folium
 import json
 import polyline
 import requests
@@ -7,12 +6,6 @@ from geopy.distance import geodesic
 from flask import Flask, render_template, request, jsonify, send_from_directory
 import heapq
 import math
-import matplotlib
-matplotlib.use('Agg')  # Backend cho server
-import matplotlib.pyplot as plt
-import io
-import base64
-from matplotlib import font_manager
 import numpy as np
 from pymongo import MongoClient
 import time
@@ -24,7 +17,7 @@ from functools import lru_cache
 
 # --- THƯ VIỆN TỐI ƯU ---
 from scipy.spatial import cKDTree
-from folium.plugins import MarkerCluster
+# NOTE: Folium/MarkerCluster and Matplotlib removed - server now returns JSON, rendering is client-side
 # -----------------------
 
 # Biến lưu trạng thái log hiện tại để gửi xuống Client
@@ -145,6 +138,10 @@ EV_CONFIG = {
     "min_battery": 20,       # % ngưỡng an toàn
     "charge_target": 80      # % mục tiêu sạc
 }
+
+# Backtrack / sliding window configuration (km / minutes)
+EV_CONFIG['backtrack_window_km'] = 10.0
+EV_CONFIG['backtrack_margin_min'] = 5.0  # allow backward moves that reduce f_cost by this margin (min)
 
 class EVState:
     """Trạng thái của xe EV trong thuật toán tìm kiếm"""
@@ -294,304 +291,14 @@ def format_turn_by_turn(steps):
     return instructions
 # ==============================================================================
 
-def create_map(center=[10.76, 106.66], zoom=12):
-    """Tạo bản đồ cơ bản với tối ưu hiệu năng"""
-    return folium.Map(
-        location=center, 
-        zoom_start=zoom,
-        tiles='OpenStreetMap',
-        prefer_canvas=True,  # Dùng Canvas thay vì SVG - nhanh hơn
-        max_zoom=18,
-        zoom_control=True,
-        scrollWheelZoom=True
-    )
+# Folium-based map generation functions removed (migrated to client-side rendering with GoongJS).
+# Server does calculation only; map HTML generation no longer performed on backend.
 
-def create_infeasible_map(start_coords, end_coords, traveled_coords, remaining_coords, failure_point, nearest_station=None):
-    """
-    Tạo bản đồ hiển thị lộ trình bị đứt gãy do hết pin
-    """
-    # 1. Tạo Map Center (lấy trung điểm của đoạn đã đi được)
-    if traveled_coords and len(traveled_coords) > 0:
-        mid_idx = len(traveled_coords) // 2
-        center = traveled_coords[mid_idx]
-    else:
-        center = start_coords
-        
-    m = create_map(center=center, zoom=8)
-    
-    # 2. Vẽ đoạn đường đi được (Màu Đỏ - Solid)
-    if traveled_coords and len(traveled_coords) > 0:
-        folium.PolyLine(
-            traveled_coords,
-            color='#ef4444',  # Đỏ
-            weight=5,
-            opacity=0.8,
-            tooltip="Quãng đường đi được"
-        ).add_to(m)
-        
-    # 3. Vẽ đoạn còn lại (Màu Xám - Dashed)
-    if remaining_coords and len(remaining_coords) > 0:
-        folium.PolyLine(
-            remaining_coords,
-            color='#94a3b8',  # Xám
-            weight=4,
-            opacity=0.6,
-            dash_array='10, 10',  # Nét đứt
-            tooltip="Quãng đường còn lại (Không thể tới)"
-        ).add_to(m)
-
-    # 4. Marker Xuất phát
-    folium.Marker(
-        start_coords,
-        icon=folium.Icon(color="green", icon="play", prefix='fa'),
-        popup="Xuất phát"
-    ).add_to(m)
-
-    # 5. Marker Đích (Mờ đi hoặc màu xám)
-    folium.Marker(
-        end_coords,
-        icon=folium.Icon(color="gray", icon="flag-checkered", prefix='fa'),
-        popup="Đích đến (Không thể tới)"
-    ).add_to(m)
-
-    # 6. Marker ĐIỂM CHẾT (Quan trọng nhất)
-    if failure_point:
-        fail_html = """
-        <div style="
-            background: #dc2626; color: white; 
-            padding: 5px 10px; border-radius: 20px; 
-            font-weight: bold; font-size: 12px;
-            box-shadow: 0 3px 6px rgba(0,0,0,0.4);
-            border: 2px solid white; white-space: nowrap;
-        ">
-            🪫 HẾT PIN
-        </div>
-        """
-        folium.Marker(
-            [failure_point[0], failure_point[1]],
-            icon=folium.DivIcon(html=fail_html, icon_size=(80, 30), icon_anchor=(40, 15)),
-            popup="Xe dừng tại đây do hết năng lượng",
-            zIndexOffset=1000
-        ).add_to(m)
-
-    # 7. Vẽ trạm sạc cứu hộ (nếu có)
-    if nearest_station:
-        station_loc = [nearest_station['lat'], nearest_station['lon']]
-        
-        # Đường nối từ điểm chết đến trạm
-        folium.PolyLine(
-            [failure_point, station_loc],
-            color='#f59e0b',  # Vàng cam
-            weight=3,
-            dash_array='5, 5',
-            opacity=0.8
-        ).add_to(m)
-        
-        # Marker trạm
-        folium.Marker(
-            station_loc,
-            icon=folium.Icon(color="orange", icon="bolt", prefix='fa'),
-            tooltip=f"Trạm gần nhất: {nearest_station.get('name', 'Unknown')}"
-        ).add_to(m)
-        
-    # Fit bounds
-    all_points = (traveled_coords or []) + (remaining_coords or [])
-    if all_points and len(all_points) > 0:
-        m.fit_bounds(all_points, padding=[50, 50])
-        
-    return m._repr_html_()
-
-def add_stations_to_map(map_obj, nearby_ferries=None, nearby_highway_stations=None, nearby_toll_stations=None, nearby_charging_stations=None):
-    """
-    TỐI ƯU HIỂN THỊ BẢN ĐỒ:
-    - CHỈ HIỆN TRẠM SẠC GẦN ĐƯỜNG ĐI (không hiện tất cả)
-    """
-    # CHỈ HIỆN TRẠM SẠC GẦN ĐƯỜNG ĐI
-    if nearby_charging_stations:
-        print(f" Hiển thị {len(nearby_charging_stations)} trạm sạc gần đường đi")
-        
-        marker_cluster = MarkerCluster(
-            name="Trạm sạc gần đường đi",
-            options={
-                'disableClusteringAtZoom': 10,
-                'spiderfyOnMaxZoom': False,
-                'maxClusterRadius': 60,
-                'chunkedLoading': True
-            }
-        ).add_to(map_obj)
-
-        for item in nearby_charging_stations:
-            station = item['station']
-            distance_to_route = item['distance_to_route']
-            icon_color = "green" if station.get('type') == 'AC' else "red"
-            
-            popup_info = f"""
-                <div style="width: 260px; font-family: Arial;">
-                    <b style="color: #10b981; font-size: 13px;">⚡ TRẠM SẠC GẦN ĐƯỜNG ĐI</b><br>
-                    <hr style="margin: 5px 0;">
-                    <b style="color: #1e293b; font-size: 14px;">{station['name']}</b><br>
-                    <div style="background: #f0fdf4; padding: 8px; margin: 8px 0; border-radius: 5px;">
-                         Loại: <b>{station.get('type', 'DC')}</b><br>
-                         Công suất: <b>{station.get('power', 150)} kW</b><br>
-                         {station.get('address', 'N/A')}
-                    </div>
-                    <div style="font-size: 12px; color: #555;">
-                         Cách đường đi: <b>{distance_to_route} km</b>
-                    </div>
-                </div>
-            """
-            
-            folium.Marker(
-                location=[station["lat"], station["lon"]],
-                popup=folium.Popup(popup_info, max_width=280, lazy=True),
-                icon=folium.Icon(color=icon_color, icon="bolt", prefix='fa'),
-                tooltip=f" {station['name']} - {distance_to_route}km"
-            ).add_to(marker_cluster)
-    
-    # XỬ LÝ HIỂN THỊ PHÀ
-    if nearby_ferries:
-        print(f" Hiển thị {len(nearby_ferries)} bến phà gần đường đi")
-        
-        ferry_cluster = MarkerCluster(
-            name="Bến phà gần đường đi",
-            options={
-                'disableClusteringAtZoom': 10,
-                'spiderfyOnMaxZoom': False,
-                'maxClusterRadius': 60,
-                'chunkedLoading': True
-            }
-        ).add_to(map_obj)
-        
-        for item in nearby_ferries:
-            ferry = item['ferry']
-            distance_to_route = item['distance_to_route']
-            
-            vehicle_allowed = ferry.get('vehicle_allowed', 'yes')
-            
-            if vehicle_allowed == 'yes':
-                icon_color = "blue"
-                status_text = "✅ Phương tiện đi qua được"
-                bg_color = "#e8f5e9"
-            elif vehicle_allowed == 'no':
-                icon_color = "gray"
-                status_text = "❌ Không cho phương tiện qua (chỉ hành khách)"
-                bg_color = "#ffebee"
-            else:
-                icon_color = "lightblue"
-                status_text = f"ℹ️ Loại: {vehicle_allowed}"
-                bg_color = "#e3f2fd"
-            
-            popup_info = f"""
-                <div style="width: 260px; font-family: Arial;">
-                    <b style="color: #e74c3c; font-size: 13px;">⚠️ PHÀ GẦN ĐƯỜNG ĐI</b><br>
-                    <hr style="margin: 5px 0;">
-                    <b style="color: #3498db; font-size: 14px;">🚢 {ferry['name']}</b><br>
-                    <div style="background: {bg_color}; padding: 8px; margin: 8px 0; border-radius: 5px;">
-                        {status_text}
-                    </div>
-                    <div style="font-size: 12px; color: #555;">
-                        📏 Cách đường đi: <b>{distance_to_route} km</b>
-                    </div>
-                </div>
-            """
-            
-            folium.Marker(
-                location=[ferry["lat"], ferry["lon"]],
-                popup=popup_info,
-                icon=folium.Icon(color=icon_color, icon="ship", prefix='fa'),
-                tooltip=f"Phà: {ferry['name']} ({distance_to_route}km)"
-            ).add_to(ferry_cluster)
-    
-    # XỬ LÝ HIỂN THỊ TRẠM DỪNG CAO TỐC
-    if nearby_highway_stations:
-        print(f"🛣️ Hiển thị {len(nearby_highway_stations)} trạm dừng cao tốc gần đường đi")
-        
-        highway_cluster = MarkerCluster(
-            name="Trạm dừng cao tốc",
-            options={
-                'disableClusteringAtZoom': 9,
-                'spiderfyOnMaxZoom': False,
-                'maxClusterRadius': 50,
-                'chunkedLoading': True
-            }
-        ).add_to(map_obj)
-        
-        for item in nearby_highway_stations:
-            station = item['station']
-            distance_to_route = item['distance_to_route']
-            
-            amenities = station.get('amenities', [])
-            amenities_text = ', '.join(amenities) if amenities else 'Không có thông tin'
-            
-            popup_info = f"""
-                <div style="width: 260px; font-family: Arial;">
-                    <b style="color: #f97316; font-size: 13px;">🛣️ TRẠM DỪNG CAO TỐC</b><br>
-                    <hr style="margin: 5px 0;">
-                    <b style="color: #1e293b; font-size: 14px;">{station['name']}</b><br>
-                    <div style="background: #fff7ed; padding: 8px; margin: 8px 0; border-radius: 5px;">
-                        🛣️ Cao tốc: <b>{station.get('highway', 'N/A')}</b><br>
-                        🏪 Tiện ích: {amenities_text}
-                    </div>
-                    <div style="font-size: 12px; color: #555;">
-                        📏 Cách đường đi: <b>{distance_to_route} km</b>
-                    </div>
-                </div>
-            """
-            
-            folium.Marker(
-                location=[station["lat"], station["lon"]],
-                popup=popup_info,
-                icon=folium.Icon(color="orange", icon="gas-pump", prefix='fa', icon_size=(12, 12)),
-                tooltip=f"⛽ Trạm: {station['name']} - Cách {distance_to_route}km"
-            ).add_to(highway_cluster)
-    
-    # XỬ LÝ HIỂN THỊ TRẠM THU PHÍ
-    if nearby_toll_stations:
-        print(f"💰 Hiển thị {len(nearby_toll_stations)} trạm thu phí gần đường đi")
-        
-        toll_cluster = MarkerCluster(
-            name="Trạm thu phí",
-            options={
-                'disableClusteringAtZoom': 9,
-                'spiderfyOnMaxZoom': False,
-                'maxClusterRadius': 50,
-                'chunkedLoading': True
-            }
-        ).add_to(map_obj)
-        
-        for item in nearby_toll_stations:
-            station = item['station']
-            distance_to_route = item['distance_to_route']
-            
-            toll_fee = station.get('toll_fee', 'Chưa rõ')
-            highway = station.get('highway', 'N/A')
-            
-            popup_info = f"""
-                <div style="width: 260px; font-family: Arial;">
-                    <b style="color: #dc2626; font-size: 13px;">💰 TRẠM THU PHÍ</b><br>
-                    <hr style="margin: 5px 0;">
-                    <b style="color: #1e293b; font-size: 14px;">{station['name']}</b><br>
-                    <div style="background: #fef2f2; padding: 8px; margin: 8px 0; border-radius: 5px;">
-                        🛣️ Tuyến: <b>{highway}</b><br>
-                        💵 Phí: <b>{toll_fee}</b>
-                    </div>
-                    <div style="font-size: 12px; color: #555;">
-                        📏 Cách đường đi: <b>{distance_to_route} km</b>
-                    </div>
-                </div>
-            """
-            
-            folium.Marker(
-                location=[station["lat"], station["lon"]],
-                popup=popup_info,
-                icon=folium.Icon(color="red", icon="money-bill", prefix='fa', icon_size=(12, 12)),
-                tooltip=f"💰 {station['name']} - {distance_to_route}km"
-            ).add_to(toll_cluster)
-            
+# Folium marker snippet removed — server no longer builds Folium maps. Nearby stations are returned in JSON and rendered client-side with GoongJS/Leaflet.            
 # ==============================================================================
 #  HÀM LẤY ROUTE TỪ GOONG API (API CHÍNH)
 # ==============================================================================
-def get_route_from_goong(start_coords, end_coords, vehicle='car'):
+def get_route_from_goong(start_coords, end_coords, vehicle='car', user_filters=None):
     """
     Lấy route từ Goong Direction API - Tối ưu cho Việt Nam.
     
@@ -617,6 +324,20 @@ def get_route_from_goong(start_coords, end_coords, vehicle='car'):
             "vehicle": vehicle,
             "api_key": GOONG_API_KEY
         }
+
+        # If user provided filters (avoid), pass them to Goong API when supported.
+        # Note: Goong's API may use a different keyword (e.g., 'avoid' or 'exclude') and value names.
+        # We'll attempt a sensible mapping and keep it safe: if user_filters present, add 'avoid' param as pipe-separated list.
+        if user_filters:
+            avoids = []
+            if user_filters.get('avoid_tolls'):
+                avoids.append('toll')
+            if user_filters.get('avoid_highways'):
+                avoids.append('motorway')
+            if user_filters.get('avoid_ferries'):
+                avoids.append('ferry')
+            if avoids:
+                params['avoid'] = '|'.join(avoids)
         
         print(f"🗺️ Đang gọi Goong Direction API...")
         print(f"   📍 Origin: {origin}")
@@ -846,17 +567,68 @@ def get_route(start_coords, end_coords, options=None):
     
     # === 4. GỌI GOONG API (API CHÍNH) ===
     print(f"\n🗺️ === SỬ DỤNG GOONG API (Tối ưu cho Việt Nam) ===")
-    routes = get_route_from_goong(start_coords, end_coords, vehicle='car')
+    # Build user_filters from options (defaults to False)
+    user_filters = {}
+    if options:
+        user_filters = {
+            'avoid_tolls': bool(options.get('avoid_tolls', False)),
+            'avoid_highways': bool(options.get('avoid_highways', False)),
+            'avoid_ferries': bool(options.get('avoid_ferries', False))
+        }
+
+    if any(user_filters.values()):
+        print(f"🔒 Applying user_filters to routing: {user_filters}")
+
+    routes = get_route_from_goong(start_coords, end_coords, vehicle='car', user_filters=user_filters)
     
     if routes:
         print(f"✅ Goong thành công! Nhận được {len(routes)} route(s)")
+        # If user requested avoids but Goong returned routes, validate quickly whether returned
+        # route contains the avoided features; if it does, try Mapbox with excludes as a fallback.
+        try:
+            if any(user_filters.values()):
+                primary_route = routes[0]
+                # primary_route.geometry may be encoded polyline string or raw geometry
+                coords = []
+                geom = primary_route.get('geometry')
+                if isinstance(geom, str) and geom:
+                    try:
+                        coords = polyline.decode(geom)
+                    except Exception:
+                        coords = []
+                elif isinstance(geom, list) and geom:
+                    coords = geom
+
+                violation = False
+                if coords:
+                    if user_filters.get('avoid_tolls'):
+                        if find_toll_stations_on_route(coords, max_distance_km=0.1):
+                            violation = True
+                    if user_filters.get('avoid_ferries') and not violation:
+                        if find_ferries_on_route(coords, max_distance_km=0.2):
+                            violation = True
+                    if user_filters.get('avoid_highways') and not violation:
+                        if find_highway_stations_on_route(coords, max_distance_km=0.1):
+                            violation = True
+
+                if violation:
+                    print("⚠️ Goong route violates user filters — attempting Mapbox with excludes as fallback...")
+                    mapbox_routes = get_route_from_mapbox(start_coords, end_coords, user_filters=user_filters)
+                    if mapbox_routes:
+                        print("✅ Mapbox found an alternative that respects filters — using Mapbox result")
+                        ROUTE_CACHE[cache_key] = {'data': mapbox_routes, 'time': time.time()}
+                        return mapbox_routes, None
+                    else:
+                        print("⚠️ Mapbox could not find a filter-respecting alternative — keeping Goong route and flagging warnings")
+        except Exception as e:
+            print(f"⚠️ Warning while validating filters against Goong route: {e}")
         # Lưu cache
         ROUTE_CACHE[cache_key] = {'data': routes, 'time': time.time()}
         return routes, None
     
     # === 5. FALLBACK SANG MAPBOX ===
     print(f"\n⚠️ Goong thất bại, chuyển sang Mapbox backup...")
-    mapbox_routes = get_route_from_mapbox(start_coords, end_coords)
+    mapbox_routes = get_route_from_mapbox(start_coords, end_coords, user_filters=user_filters)
     
     if mapbox_routes:
         print(f"✅ Mapbox backup thành công!")
@@ -874,7 +646,7 @@ def get_route(start_coords, end_coords, options=None):
     
     return [], "Không thể kết nối đến server định tuyến (Goong/Mapbox)"
 
-def get_route_from_mapbox(start_coords, end_coords):
+def get_route_from_mapbox(start_coords, end_coords, user_filters=None):
     """
     Hàm gọi Mapbox API khi OSRM thất bại (Backup Plan).
     Trả về định dạng dữ liệu giống hệt OSRM để không phá vỡ logic tính pin.
@@ -905,6 +677,20 @@ def get_route_from_mapbox(start_coords, end_coords):
             "steps": "true",           # Lấy chỉ dẫn đường đi
             "alternatives": "false"    # Chỉ lấy 1 đường tốt nhất
         }
+
+        # Support exclude param for Mapbox to avoid motorway/toll/ferry when user requests it
+        if user_filters:
+            excludes = []
+            if user_filters.get('avoid_highways'):
+                excludes.append('motorway')
+            if user_filters.get('avoid_tolls'):
+                excludes.append('toll')
+            if user_filters.get('avoid_ferries'):
+                excludes.append('ferry')
+            if excludes:
+                params['exclude'] = ','.join(excludes)
+                # Ask for alternatives when user requests avoid so we can pick best non-offending route
+                params['alternatives'] = 'true'
         
         print("🌍 Đang gọi Mapbox API (Backup Plan)...")
         response = requests.get(url, params=params, timeout=15)
@@ -1238,23 +1024,24 @@ def calculate_real_path_length(coords_segment):
 # Heuristic (h): Estimated driving time to End
 # ==============================================================================
 
-def get_stations_along_route(route_coords, route_km_cumulative, buffer_km=12.0):
+def get_stations_along_route(route_coords, route_km_cumulative, buffer_km=25.0):
     """
     Tìm tất cả trạm sạc trong bán kính buffer_km dọc theo lộ trình.
     
     Chiến lược "Vây lưới" (Corridor Search):
-    1. Lấy mẫu các điểm trên route (mỗi ~2km)
+    1. Lấy mẫu các điểm trên route (mỗi ~2km cho route ngắn, ~5km cho route dài)
     2. Query KD-Tree tìm trạm gần mỗi điểm mẫu
     3. Project mỗi trạm lên route để tính km_position
     
     UPGRADED:
-    - buffer_km tăng từ 5km lên 12km để bắt trạm sạc ở đường tránh/nội thị
+    - buffer_km tăng từ 12km lên 25km để bắt trạm sạc xa đường chính (đặc biệt route dài)
+    - sample_interval_km linh hoạt: 5km cho route >500km, 2km cho route ngắn
     - Thêm fallback: nếu không tìm thấy trạm, sẽ tìm 5 trạm gần nhất bất kể khoảng cách
     
     Args:
         route_coords: Danh sách tọa độ [(lat, lon), ...]
         route_km_cumulative: Danh sách km tích lũy tại mỗi điểm [0, 0.5, 1.2, ...]
-        buffer_km: Bán kính tìm kiếm (km) - default 12km
+        buffer_km: Bán kính tìm kiếm (km) - default 25km
         
     Returns:
         list: Danh sách trạm đã được sắp xếp theo km_position
@@ -1263,9 +1050,13 @@ def get_stations_along_route(route_coords, route_km_cumulative, buffer_km=12.0):
         print("⚠️ Không có dữ liệu trạm sạc!")
         return []
     
-    # 1. LẤY MẪU ROUTE (mỗi ~2km để query nhanh)
+    # 1. LẤY MẪU ROUTE (linh hoạt theo độ dài route)
     total_route_km = route_km_cumulative[-1] if route_km_cumulative else 0
-    sample_interval_km = 2.0  # Lấy mẫu mỗi 2km
+    # Adaptive sampling: lấy mẫu thưa hơn cho route dài để giảm tải CPU
+    if total_route_km > 500:
+        sample_interval_km = 5.0  # Lấy mẫu mỗi 5km cho route dài (HCM-Hà Nội)
+    else:
+        sample_interval_km = 2.0  # Lấy mẫu mỗi 2km cho route ngắn
     
     sampled_indices = [0]
     last_km = 0
@@ -1396,7 +1187,7 @@ class AStarNode:
         return self.f_cost < other.f_cost
 
 
-def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, config, priority='time'):
+def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, config, priority='time', user_filters=None):
     """
     Thuật toán A* Graph-based cho EV Routing.
     
@@ -1433,7 +1224,7 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
     
     # === 2. TÌM TẤT CẢ TRẠM SẠC DỌC ĐƯỜNG (Corridor Search) ===
     # Buffer 12km để bắt trạm ở đường tránh, nội thị (tăng từ 5km)
-    candidates = get_stations_along_route(route_coords, route_km_cumulative, buffer_km=12.0)
+    candidates = get_stations_along_route(route_coords, route_km_cumulative, buffer_km=25.0)
     
     # Thêm node Start và End
     nodes = []
@@ -1473,7 +1264,7 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
     # Trường hợp 1: Có thể đi thẳng không cần sạc
     if max_range_km >= total_route_km * 1.05:  # +5% buffer an toàn
         print(f"✅ Có thể đi thẳng đến đích mà không cần sạc!")
-        return build_direct_route_result(route_coords, route_km_cumulative, start_battery, config), None
+        return build_direct_route_result(route_coords, route_km_cumulative, start_battery, config, user_filters=user_filters), None
     
     # Trường hợp 2: Không có trạm sạc nào
     if len(candidates) == 0:
@@ -1598,12 +1389,13 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
         
         current_node = nodes[current.node_id]
         
-        # === EXPAND: Thử đi đến các node phía trước ===
-        for next_idx in range(current.node_id + 1, len(nodes)):
+        # === EXPAND: Thử đi đến các node phía trước và các node lân cận (pruned candidate set) ===
+        candidate_indices = build_candidate_indices(current.node_id, nodes, config)
+        for next_idx in candidate_indices:
             next_node = nodes[next_idx]
             
-            # Tính khoảng cách đến next_node
-            dist_on_route = next_node['km_position'] - current_node['km_position']
+            # Tính khoảng cách đến next_node (dùng giá trị tuyệt đối để hỗ trợ backtrack)
+            dist_on_route = abs(next_node['km_position'] - current_node['km_position'])
             detour_dist = next_node.get('detour_km', 0) * 2  # Đi vào + ra
             total_dist = (dist_on_route + detour_dist) * SAFETY_FACTOR
             
@@ -1615,34 +1407,64 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
             if battery_remaining < config['min_battery']:
                 # Nếu current_node là station, thử sạc trước khi đi
                 if current_node['type'] == 'station':
-                    # Tính lượng sạc cần thiết
-                    battery_needed = battery_consumed + config['min_battery'] + 10  # +10% buffer
-                    charge_needed = max(0, battery_needed - current.battery)
-                    
-                    if charge_needed > 0 and current.battery < 100:
-                        # Tính thời gian sạc
-                        target_battery = min(100, current.battery + charge_needed)
+                    # Use smart charging strategy to decide partial vs full charge
+                    # Default safe value
+                    optimal_target = 100.0
+                    try:
+                        remaining_nodes_indices = range(current.node_id + 1, len(nodes))
+                        remaining_coords = [nodes[i]['coords'] for i in remaining_nodes_indices]
+
+                        if remaining_coords:
+                            val = calculate_optimal_charge_target(
+                                remaining_coords,
+                                current_node.get('station'),
+                                current.battery,
+                                config
+                            )
+                            # Coerce to float safely
+                            if val is not None:
+                                try:
+                                    optimal_target = float(val)
+                                except Exception:
+                                    optimal_target = 100.0
+                    except Exception as e:
+                        # Fallback to conservative behavior if optimal calculation fails
+                        print(f"⚠️ Warning: calculate_optimal_charge_target failed: {e}")
+                        optimal_target = 100.0
+
+                    # Ensure target is sufficient to reach next hop
+                    min_needed_for_next_hop = battery_consumed + config.get('min_battery', 0)
+                    try:
+                        target_battery = max(float(optimal_target), float(min_needed_for_next_hop))
+                    except Exception:
+                        target_battery = float(optimal_target or 100.0)
+
+                    target_battery = min(100.0, target_battery)
+
+                    # Only charge if it increases battery significantly
+                    if target_battery > current.battery + 2 and current.battery < 100:
                         charge_time = calculate_charge_time(
-                            current.battery, 
-                            target_battery, 
-                            current_node.get('power', 150), 
+                            current.battery,
+                            target_battery,
+                            current_node.get('power', 150),
                             config
                         )
-                        
-                        # Tính lại battery sau khi sạc
+
+                        charge_added = target_battery - current.battery
+                        energy_kwh = (charge_added / 100) * config['battery_capacity']
+
+                        # Tính lại battery sau khi sạc và sau khi đi đến next_node
                         new_battery = target_battery - battery_consumed
-                        
-                        if new_battery >= config['min_battery']:
-                            # Tạo node mới với việc sạc
+
+                        if new_battery >= config.get('min_battery', 0):
                             driving_time = (total_dist / AVG_SPEED_KMH) * 60
                             new_g_cost = current.g_cost + driving_time + charge_time
-                            
-                            # Heuristic
+
+                            # Heuristic (với trọng số 1.15 để tăng tốc cho route dài)
+                            HEURISTIC_WEIGHT = 1.15
                             remaining_km = total_route_km - next_node['km_position']
-                            h_cost = (remaining_km / AVG_SPEED_KMH) * 60
-                            
-                            energy_kwh = (charge_needed / 100) * config['battery_capacity']
-                            
+                            h_cost = ((remaining_km / AVG_SPEED_KMH) * 60) * HEURISTIC_WEIGHT
+
                             new_node = AStarNode(
                                 node_id=next_idx,
                                 km_position=next_node['km_position'],
@@ -1654,7 +1476,7 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
                                 charge_time=charge_time,
                                 charge_amount=energy_kwh
                             )
-                            
+
                             heapq.heappush(pq, (new_node.f_cost, counter, new_node))
                             counter += 1
                 
@@ -1662,14 +1484,28 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
                 # (hoặc current_node không phải station)
                 continue
             
+            # === BACKTRACK PRUNING: if this is a backward move, only accept if promising ===
+            is_backward = next_node['km_position'] < current_node['km_position']
+            if is_backward:
+                driving_time = (total_dist / AVG_SPEED_KMH) * 60
+                HEURISTIC_WEIGHT = 1.15
+                remaining_km = total_route_km - next_node['km_position']
+                h_cost = ((remaining_km / AVG_SPEED_KMH) * 60) * HEURISTIC_WEIGHT
+                est_total = current.g_cost + driving_time + h_cost
+                margin = config.get('backtrack_margin_min', 5.0)
+                if est_total >= current.f_cost + margin:
+                    # Skip non-promising backward move
+                    continue
+
             # === CÓ THỂ ĐI ĐƯỢC ===
             driving_time = (total_dist / AVG_SPEED_KMH) * 60
             new_g_cost = current.g_cost + driving_time
-            
-            # Heuristic
+
+            # Heuristic (với trọng số 1.15 để tăng tốc cho route dài)
+            HEURISTIC_WEIGHT = 1.15
             remaining_km = total_route_km - next_node['km_position']
-            h_cost = (remaining_km / AVG_SPEED_KMH) * 60
-            
+            h_cost = ((remaining_km / AVG_SPEED_KMH) * 60) * HEURISTIC_WEIGHT
+
             new_node = AStarNode(
                 node_id=next_idx,
                 km_position=next_node['km_position'],
@@ -1678,7 +1514,7 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
                 h_cost=h_cost,
                 parent=current
             )
-            
+
             heapq.heappush(pq, (new_node.f_cost, counter, new_node))
             counter += 1
     
@@ -1766,10 +1602,10 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
         return None, error_info
     
     # Reconstruct path
-    return reconstruct_astar_result(best_solution, nodes, route_coords, route_km_cumulative, config)
+    return reconstruct_astar_result(best_solution, nodes, route_coords, route_km_cumulative, config, user_filters=user_filters)
 
 
-def reconstruct_astar_result(goal_node, nodes, route_coords, route_km_cumulative, config):
+def reconstruct_astar_result(goal_node, nodes, route_coords, route_km_cumulative, config, user_filters=None):
     """
     Xây dựng kết quả từ A* solution path.
     
@@ -1779,6 +1615,8 @@ def reconstruct_astar_result(goal_node, nodes, route_coords, route_km_cumulative
     """
     total_route_km = route_km_cumulative[-1]
     
+    if user_filters is None:
+        user_filters = {}
     # Reconstruct path từ goal về start
     path = []
     current = goal_node
@@ -1872,13 +1710,15 @@ def reconstruct_astar_result(goal_node, nodes, route_coords, route_km_cumulative
             'km': toll_info.get('km_on_route', 0)
         })
         
+        is_violation = bool(user_filters.get('avoid_tolls', False))
         travel_events.append({
             'type': 'toll',
             'name': toll.get('name', 'Trạm thu phí'),
             'cost': fee,
             'km': toll_info.get('km_on_route', 0),
             'coords': [toll['lat'], toll['lon']],
-            'details': {'highway': toll.get('highway', 'N/A')}
+            'details': {'highway': toll.get('highway', 'N/A')},
+            'warning': is_violation
         })
     
     total_ferry_cost = 0
@@ -1893,14 +1733,15 @@ def reconstruct_astar_result(goal_node, nodes, route_coords, route_km_cumulative
             'fee': fee,
             'km': ferry_info.get('km_on_route', 0)
         })
-        
+        is_violation = bool(user_filters.get('avoid_ferries', False))
         travel_events.append({
             'type': 'ferry',
             'name': ferry.get('name', 'Phà'),
             'cost': fee,
             'km': ferry_info.get('km_on_route', 0),
             'coords': [ferry['lat'], ferry['lon']],
-            'details': {'crossing_time_min': ferry.get('crossing_time', 15)}
+            'details': {'crossing_time_min': ferry.get('crossing_time', 15)},
+            'warning': is_violation
         })
     
     highway_stops_passed = []
@@ -1910,14 +1751,15 @@ def reconstruct_astar_result(goal_node, nodes, route_coords, route_km_cumulative
             'name': station.get('name', 'Trạm dừng'),
             'km': hw_info.get('km_on_route', 0)
         })
-        
+        is_violation = bool(user_filters.get('avoid_highways', False))
         travel_events.append({
             'type': 'highway_stop',
             'name': station.get('name', 'Trạm dừng cao tốc'),
             'cost': 0,
             'km': hw_info.get('km_on_route', 0),
             'coords': [station['lat'], station['lon']],
-            'details': {'amenities': station.get('amenities', [])}
+            'details': {'amenities': station.get('amenities', [])},
+            'warning': is_violation
         })
     
     # Sắp xếp travel events theo km
@@ -1964,23 +1806,27 @@ def reconstruct_astar_result(goal_node, nodes, route_coords, route_km_cumulative
     }, None
 
 
-def build_direct_route_result(route_coords, route_km_cumulative, start_battery, config):
+def build_direct_route_result(route_coords, route_km_cumulative, start_battery, config, user_filters=None):
     """
     Xây dựng kết quả khi có thể đi thẳng không cần sạc.
     """
+    # === Thiết lập mặc định cho user_filters để tránh AttributeError khi None được truyền vào ===
+    if user_filters is None:
+        user_filters = {}
+
     total_route_km = route_km_cumulative[-1]
     battery_consumed = calculate_battery_consumption(total_route_km, config)
     final_battery = start_battery - battery_consumed
-    
+
     # Tính phí cầu đường, phà
     tolls_on_route = find_toll_stations_on_route(route_coords, max_distance_km=0.1)
     ferries_on_route = find_ferries_on_route(route_coords, max_distance_km=0.2)
     highways_on_route = find_highway_stations_on_route(route_coords, max_distance_km=0.1)
-    
+
     total_toll_cost = 0
     toll_stations_passed = []
     travel_events = []
-    
+
     for toll_info in tolls_on_route:
         toll = toll_info['station']
         fee = toll_info.get('fee', DEFAULT_TOLL_FEE)
@@ -1988,6 +1834,7 @@ def build_direct_route_result(route_coords, route_km_cumulative, start_battery, 
             import re
             numbers = re.findall(r'[\d,.]+', fee.replace(',', ''))
             fee = int(float(numbers[0])) if numbers else DEFAULT_TOLL_FEE
+
         total_toll_cost += fee
         toll_stations_passed.append({
             'name': toll.get('name', 'Trạm thu phí'),
@@ -1995,15 +1842,23 @@ def build_direct_route_result(route_coords, route_km_cumulative, start_battery, 
             'fee': fee,
             'km': toll_info.get('km_on_route', 0)
         })
+
+        # === Gắn cờ warning nếu user yêu cầu tránh trạm thu phí ===
+        is_violation = bool(user_filters.get('avoid_tolls', False))
+
         travel_events.append({
-            'type': 'toll', 'name': toll.get('name'), 'cost': fee,
+            'type': 'toll',
+            'name': toll.get('name', 'Trạm thu phí'),
+            'cost': fee,
             'km': toll_info.get('km_on_route', 0),
             'coords': [toll['lat'], toll['lon']],
-            'details': {'highway': toll.get('highway', 'N/A')}
+            'details': {'highway': toll.get('highway', 'N/A')},
+            'warning': is_violation
         })
-    
+
     total_ferry_cost = 0
     ferries_passed = []
+
     for ferry_info in ferries_on_route:
         ferry = ferry_info['ferry']
         fee = ferry_info.get('fee', 50000)
@@ -2013,13 +1868,20 @@ def build_direct_route_result(route_coords, route_km_cumulative, start_battery, 
             'fee': fee,
             'km': ferry_info.get('km_on_route', 0)
         })
+
+        # === Gắn cờ warning nếu user yêu cầu tránh phà ===
+        is_violation = bool(user_filters.get('avoid_ferries', False))
+
         travel_events.append({
-            'type': 'ferry', 'name': ferry.get('name'), 'cost': fee,
+            'type': 'ferry',
+            'name': ferry.get('name', 'Phà'),
+            'cost': fee,
             'km': ferry_info.get('km_on_route', 0),
             'coords': [ferry['lat'], ferry['lon']],
-            'details': {}
+            'details': {'crossing_time_min': ferry.get('crossing_time', 15)},
+            'warning': is_violation
         })
-    
+
     highway_stops_passed = []
     for hw_info in highways_on_route:
         station = hw_info['station']
@@ -2027,20 +1889,27 @@ def build_direct_route_result(route_coords, route_km_cumulative, start_battery, 
             'name': station.get('name', 'Trạm dừng'),
             'km': hw_info.get('km_on_route', 0)
         })
+
+        # === Gắn cờ warning nếu user yêu cầu tránh đường cao tốc ===
+        is_violation = bool(user_filters.get('avoid_highways', False))
+
         travel_events.append({
-            'type': 'highway_stop', 'name': station.get('name'), 'cost': 0,
+            'type': 'highway_stop',
+            'name': station.get('name', 'Trạm dừng cao tốc'),
+            'cost': 0,
             'km': hw_info.get('km_on_route', 0),
             'coords': [station['lat'], station['lon']],
-            'details': {}
+            'details': {'amenities': station.get('amenities', [])},
+            'warning': is_violation
         })
-    
+
     travel_events.sort(key=lambda x: x['km'])
-    
+
     driving_time = (total_route_km / 60) * 60
-    
-    print(f"   💰 Phát hiện {len(toll_stations_passed)} trạm thu phí trên đường đi")
-    print(f"   🚢 Phát hiện {len(ferries_passed)} phà trên đường đi")
-    
+
+    print(f"    💰 Phát hiện {len(toll_stations_passed)} trạm thu phí trên đường đi")
+    print(f"    🚢 Phát hiện {len(ferries_passed)} phà trên đường đi")
+
     return {
         'total_distance': round(total_route_km, 2),
         'driving_time': round(driving_time, 1),
@@ -2067,305 +1936,151 @@ def build_direct_route_result(route_coords, route_km_cumulative, start_battery, 
 def calculate_optimal_charge_target(remaining_checkpoints, current_station, current_battery, config):
     """
     TỐI ƯU THÔNG MINH: TÍNH LƯỢNG SẠC TỐI ƯU
-    
-    Logic:
-    1. Tìm trạm tiếp theo trong vòng 200km
-    2. Nếu trạm đó tốt hơn (công suất cao) → Chỉ sạc vừa đủ đến đó
-    3. Nếu không có trạm tốt hơn → Sạc đầy để tối đa hóa tầm xa
-    
-    Args:
-        remaining_checkpoints: Các điểm còn lại trên route
-        current_station: Trạm hiện tại
-        current_battery: Pin hiện tại (%)
-        config: Cấu hình xe
-    
-    Returns:
-        Mức pin mục tiêu (%)
+
+    Luôn trả về một số (không bao giờ None). Trả về phần trăm pin mục tiêu (0-100).
     """
-    if len(remaining_checkpoints) < 2:
-        # Gần đích → Sạc vừa đủ để đến đích
-        return min(100, current_battery + 30)
-    
-    # Tính khoảng cách đến các checkpoints tiếp theo
-    current_pos = remaining_checkpoints[0]
-    max_search_distance = 200  # km
-    
-    # Tìm trạm tiếp theo tốt hơn
-    next_better_station = find_next_better_station(
-        current_pos, 
-        max_search_distance, 
-        current_station.get('power', 150),
-        config
-    )
-    
-    if next_better_station:
-        station_distance = next_better_station['distance']
-        station_power = next_better_station['station'].get('power', 150)
-        current_power = current_station.get('power', 150)
-        
-        # Tính pin cần để đến trạm đó (+ buffer 10%)
-        battery_to_next = calculate_battery_consumption(station_distance, config)
-        target = current_battery + battery_to_next + 10
-        
-        # CHỈ SẠC VỪA ĐỦ NẾU:
-        # 1. Trạm sau công suất cao hơn ít nhất 30kW
-        # 2. Cần sạc < 80% (tránh sạc chậm)
-        if station_power >= current_power + 30 and target <= 80:
-            print(f"   💡 Tối ưu: Chỉ sạc {target:.0f}% để đến trạm {next_better_station['station']['name']} ({station_power}kW)")
-            return min(85, max(target, current_battery + 20))
-    
-    # Không có trạm tốt hơn → Sạc đầy
-    return 100
+    DEFAULT_TARGET = 100
+
+    try:
+        # Defensive checks for input
+        if not remaining_checkpoints or len(remaining_checkpoints) < 2:
+            # Gần đích -> Sạc vừa đủ để đến đích (+ buffer an toàn)
+            return min(100, float(current_battery) + 30)
+
+        # Tính khoảng cách đến các checkpoints tiếp theo
+        current_pos = remaining_checkpoints[0]
+        if not current_pos or (not isinstance(current_pos, (list, tuple)) or len(current_pos) != 2):
+            return DEFAULT_TARGET
+
+        max_search_distance = 200  # km
+
+        current_power = current_station.get('power', 0) if current_station else 0
+
+        # Tìm trạm tiếp theo tốt hơn
+        next_better_station = find_next_better_station(
+            current_pos,
+            max_search_distance,
+            current_power,
+            config
+        )
+
+        if next_better_station:
+            station_distance = next_better_station.get('distance')
+            station_power = next_better_station.get('power', next_better_station.get('station', {}).get('power', 150))
+
+            # Guard against bad distance
+            if station_distance is None:
+                return DEFAULT_TARGET
+
+            # Tính pin cần để đến trạm đó (+ buffer 10%)
+            battery_to_next = calculate_battery_consumption(station_distance, config)
+            target = float(current_battery) + battery_to_next + 10
+
+            # CHỈ SẠC VỪA ĐỦ NẾU:
+            # 1. Trạm sau công suất cao hơn ít nhất 30kW
+            # 2. Cần sạc < 80% (tránh vùng sạc chậm của pin)
+            if station_power >= current_power + 30 and target <= 80:
+                # print(f"   💡 Tối ưu: Chỉ sạc {target:.0f}% để đến trạm {next_better_station['station'].get('name')} ({station_power}kW)")
+                return min(85.0, max(target, float(current_battery) + 20.0))
+
+    except Exception:
+        # Silently fallback to DEFAULT
+        pass
+
+    return DEFAULT_TARGET
 
 def find_next_better_station(current_pos, max_distance_km, current_power, config):
     """
-    Tìm trạm tiếp theo tốt hơn trong vòng max_distance_km
-    
-    Args:
-        current_pos: Vị trí hiện tại
-        max_distance_km: Khoảng cách tìm kiếm tối đa
-        current_power: Công suất trạm hiện tại
-        config: Cấu hình xe
-    
-    Returns:
-        {station, distance} hoặc None
+    Returns: {station, distance, power} hoặc None
     """
-    if station_tree is None or len(stations) == 0:
+    if station_tree is None or not stations:
         return None
-    
-    # Tìm 20 trạm gần nhất
+
+    # Validate current_pos
+    if not current_pos or (not isinstance(current_pos, (list, tuple)) or len(current_pos) != 2):
+        return None
+
     try:
-        distances, indices = station_tree.query(current_pos, k=min(20, len(stations)))
-    except Exception as e:
+        k = min(20, len(stations))
+        distances, indices = station_tree.query(current_pos, k=k)
+    except Exception:
         return None
-    
+
     better_stations = []
-    
+
+    # Normalize single-result case
+    if not isinstance(indices, (list, np.ndarray)):
+        indices = [indices]
+        distances = [distances]
+
     for dist_deg, idx in zip(distances, indices):
-        station = stations[idx]
-        distance = geodesic(current_pos, (station['lat'], station['lon'])).km
-        
-        # CHỈ XÉT TRẠM:
-        # 1. Trong vòng max_distance_km
-        # 2. Công suất cao hơn ít nhất 30kW
-        if distance <= max_distance_km and station.get('power', 150) >= current_power + 30:
-            better_stations.append({
-                'station': station,
-                'distance': distance,
-                'power': station.get('power', 150)
-            })
-    
+        try:
+            if idx is None:
+                continue
+            if idx >= len(stations) or idx < 0:
+                continue
+
+            station = stations[int(idx)]
+            # Compute real geodesic distance (km)
+            distance = geodesic(current_pos, (station.get('lat'), station.get('lon'))).km
+
+            station_power = station.get('power') or 0
+
+            if distance <= max_distance_km and station_power >= (current_power or 0) + 30:
+                better_stations.append({
+                    'station': station,
+                    'distance': distance,
+                    'power': station_power
+                })
+        except Exception:
+            continue
+
     if not better_stations:
         return None
-    
-    # Ưu tiên trạm gần + công suất cao
-    # Score = power * 1.5 - distance * 2
-    better_stations.sort(key=lambda x: x['power'] * 1.5 - x['distance'] * 2, reverse=True)
+
+    better_stations.sort(key=lambda x: (x['power'] * 1.5) - (x['distance'] * 2), reverse=True)
     return better_stations[0]
 
-def add_route_to_map(map_obj, route_coords, charging_stops, travel_events=None, color="blue", label=""):
+def build_candidate_indices(current_node_idx, nodes, config):
     """
-    Thêm route và CÁC SỰ KIỆN (Thu phí, Phà, Trạm dừng) lên bản đồ.
-    Đã sửa: Vẽ Full tọa độ để bám sát đường đi thực tế.
-    
-    Args:
-        map_obj: Folium map object
-        route_coords: Danh sách tọa độ đường đi
-        charging_stops: Danh sách các trạm sạc
-        travel_events: Danh sách sự kiện (toll, ferry, highway_stop)
-        color: Màu đường đi
-        label: Nhãn route
+    PHIÊN BẢN TỐI ƯU (PRUNED):
+    Chỉ trả về các node nằm trong tầm với lý thuyết của xe.
+    Giúp giảm độ phức tạp từ O(N^2) xuống O(N*K) với K nhỏ.
     """
-    # 1. VẼ ĐƯỜNG ĐI (Polyline) - KHÔNG LẤY MẪU (NO SAMPLING)
-    # Thay vì lấy mẫu 100 điểm, ta vẽ toàn bộ điểm để đường cong mềm mại
-    
-    folium.PolyLine(
-        route_coords,  # <--- Dùng trực tiếp toàn bộ danh sách tọa độ gốc
-        color=color, 
-        weight=5,
-        opacity=0.7,
-        popup=label, 
-        smooth_factor=1.0  # <--- Giảm xuống 1.0 để Folium không tự động làm thẳng các khúc cua
-    ).add_to(map_obj)
-    
-    # 2. ĐIỂM XUẤT PHÁT & ĐÍCH
-    folium.Marker(
-        route_coords[0], 
-        icon=folium.Icon(color="green", icon="play", prefix='fa'),
-        popup=folium.Popup("<b>🚗 Xuất phát</b>", max_width=150)
-    ).add_to(map_obj)
-    
-    folium.Marker(
-        route_coords[-1], 
-        icon=folium.Icon(color="red", icon="flag-checkered", prefix='fa'),
-        popup=folium.Popup("<b>🏁 Đích</b>", max_width=150)
-    ).add_to(map_obj)
-    
-    # 3. VẼ TRẠM SẠC ĐÃ CHỌN
-    for i, stop in enumerate(charging_stops, 1):
-        s = stop['station']
-        
-        popup_content = f"""
-            <div style='min-width: 220px; font-family: Arial;'>
-                <b style='color: #f97316; font-size: 14px;'>⚡ TRẠM SẠC #{i}</b><br>
-                <b>{s['name']}</b><br>
-                <small>🔌 {s.get('power', 150)}kW | ⏱️ {stop['charge_time']:.0f}p</small><br>
-                <small>🔋 {stop['start_charge']:.0f}% ➝ {stop['end_charge']:.0f}%</small>
-            </div>
-        """
-        
-        folium.Marker(
-            [s['lat'], s['lon']],
-            icon=folium.Icon(color="orange", icon="bolt", prefix='fa'),
-            popup=folium.Popup(popup_content, max_width=250),
-            tooltip=f"⚡ Trạm sạc #{i}",
-            zIndexOffset=1000  # Ưu tiên hiển thị lên trên
-        ).add_to(map_obj)
-    
-    # 4. VẼ TRAVEL EVENTS (Trạm thu phí, Phà, Trạm dừng cao tốc)
-    if travel_events:
-        for event in travel_events:
-            # Bỏ qua nếu không có tọa độ
-            if 'coords' not in event or not event['coords']:
-                continue
-            
-            coords = event['coords']
-            event_type = event.get('type', 'unknown')
-            
-            if event_type == 'toll':
-                # === TRẠM THU PHÍ ===
-                popup_content = f"""
-                    <div style='min-width: 180px; font-family: Arial;'>
-                        <b style='color: #dc2626; font-size: 13px;'>💰 TRẠM THU PHÍ</b><br>
-                        <b>{event['name']}</b><br>
-                        <span style='color: #b91c1c; font-weight: 700;'>Phí: {event['cost']:,.0f} đ</span><br>
-                        <small style='color: gray;'>📍 Km {event['km']:.1f}</small>
-                    </div>
-                """
-                folium.Marker(
-                    coords,
-                    icon=folium.Icon(color="red", icon="money-bill", prefix='fa', icon_size=(12, 12)), # Chỉnh icon to hơn xíu để dễ nhìn
-                    popup=folium.Popup(popup_content, max_width=200),
-                    tooltip=f"💰 {event['name']}"
-                ).add_to(map_obj)
-                
-            elif event_type == 'ferry':
-                # === PHÀ ===
-                popup_content = f"""
-                    <div style='min-width: 180px; font-family: Arial;'>
-                        <b style='color: #2563eb; font-size: 13px;'>🚢 PHÀ</b><br>
-                        <b>{event['name']}</b><br>
-                        <span style='color: #1d4ed8; font-weight: 700;'>Vé: {event['cost']:,.0f} đ</span><br>
-                        <small style='color: gray;'>📍 Km {event['km']:.1f}</small>
-                    </div>
-                """
-                folium.Marker(
-                    coords,
-                    icon=folium.Icon(color="blue", icon="ship", prefix='fa', icon_size=(12, 12)),
-                    popup=folium.Popup(popup_content, max_width=200),
-                    tooltip=f"🚢 {event['name']}"
-                ).add_to(map_obj)
-                
-            elif event_type == 'highway_stop':
-                # === TRẠM DỪNG CAO TỐC ===
-                popup_content = f"""
-                    <div style='min-width: 180px; font-family: Arial;'>
-                        <b style='color: #d97706; font-size: 13px;'>🛣️ TRẠM DỪNG</b><br>
-                        <b>{event['name']}</b><br>
-                        <small style='color: gray;'>📍 Km {event['km']:.1f}</small>
-                    </div>
-                """
-                folium.Marker(
-                    coords,
-                    icon=folium.Icon(color="beige", icon="gas-pump", prefix='fa'),
-                    popup=folium.Popup(popup_content, max_width=200),
-                    tooltip=f"🛣️ {event['name']}"
-                ).add_to(map_obj)
+    candidates = []
+    current_node = nodes[current_node_idx]
+    curr_km = current_node['km_position']
+    n_nodes = len(nodes)
 
+    # Defensive defaults
+    battery_capacity = float(config.get('battery_capacity', 75))
+    consumption = float(config.get('consumption', 20))  # kWh / 100km
 
+    # 1. Tính tầm với lý thuyết tối đa (khi đầy bình)
+    # max range (km) = (battery_capacity / consumption) * 100
+    max_theoretical_range = (battery_capacity / consumption) * 100 * 1.1  # +10% buffer
 
-def create_comparison_chart(routes_data):
-    if not routes_data: return None
-    plt.rcParams['font.family'] = 'DejaVu Sans'
-    plt.rcParams['font.size'] = 10
-    fig, axes = plt.subplots(2, 2, figsize=(12, 8), dpi=80)
-    fig.patch.set_facecolor('white')
-    fig.patch.set_alpha(0.95)
-    
-    names = [r['name'] for r in routes_data]
-    colors = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b']  # Màu cho từng route
-    x = np.arange(len(names))
-    
-    # 1. Quãng đường - Line chart
-    dists = [r['metrics']['total_distance'] for r in routes_data]
-    axes[0,0].plot(x, dists, marker='o', linewidth=3, markersize=10, color='#3b82f6', 
-                   markerfacecolor='white', markeredgewidth=2, markeredgecolor='#3b82f6')
-    axes[0,0].fill_between(x, dists, alpha=0.2, color='#3b82f6')
-    axes[0,0].set_title('Quãng đường (km)', fontweight='bold', pad=15, fontsize=12)
-    axes[0,0].set_ylabel('km', fontweight='bold')
-    axes[0,0].set_xticks(x)
-    axes[0,0].set_xticklabels(names, rotation=0)
-    axes[0,0].grid(axis='y', alpha=0.3, linestyle='--')
-    # Thêm giá trị trên điểm
-    for i, v in enumerate(dists):
-        axes[0,0].text(i, v + max(dists)*0.02, f'{v:.1f}', ha='center', fontweight='bold', fontsize=9)
-    
-    # 2. Thời gian - Stacked area chart
-    d_time = [r['metrics']['driving_time'] for r in routes_data]
-    c_time = [r['metrics']['charging_time'] for r in routes_data]
-    axes[0,1].plot(x, d_time, marker='o', linewidth=3, markersize=8, color='#10b981', 
-                   label='Lái xe', markerfacecolor='white', markeredgewidth=2, markeredgecolor='#10b981')
-    axes[0,1].plot(x, c_time, marker='s', linewidth=3, markersize=8, color='#f59e0b', 
-                   label='Sạc pin', markerfacecolor='white', markeredgewidth=2, markeredgecolor='#f59e0b')
-    axes[0,1].fill_between(x, d_time, alpha=0.2, color='#10b981')
-    axes[0,1].fill_between(x, c_time, alpha=0.2, color='#f59e0b')
-    axes[0,1].set_xticks(x)
-    axes[0,1].set_xticklabels(names, rotation=0)
-    axes[0,1].legend(loc='upper right', framealpha=0.9)
-    axes[0,1].set_title('Thời gian (phút)', fontweight='bold', pad=15, fontsize=12)
-    axes[0,1].set_ylabel('phút', fontweight='bold')
-    axes[0,1].grid(axis='y', alpha=0.3, linestyle='--')
+    # Cửa sổ quay đầu (Backtrack)
+    backtrack_window = config.get('backtrack_window_km', 10.0)
 
-    # 3. Số lần sạc - Line chart với Y axis số nguyên
-    charges = [r['metrics']['num_charges'] for r in routes_data]
-    axes[1,0].plot(x, charges, marker='D', linewidth=3, markersize=10, color='#8b5cf6',
-                   markerfacecolor='white', markeredgewidth=2, markeredgecolor='#8b5cf6')
-    axes[1,0].fill_between(x, charges, alpha=0.2, color='#8b5cf6')
-    axes[1,0].set_title('Số lần sạc', fontweight='bold', pad=15, fontsize=12)
-    axes[1,0].set_ylabel('lần', fontweight='bold')
-    axes[1,0].set_xticks(x)
-    axes[1,0].set_xticklabels(names, rotation=0)
-    axes[1,0].grid(axis='y', alpha=0.3, linestyle='--')
-    
-    # QUAN TRỌNG: Set Y axis chỉ hiển thị số nguyên
-    max_charges = max(charges) if charges else 1
-    axes[1,0].set_ylim(bottom=0, top=max_charges + 1)
-    axes[1,0].yaxis.set_major_locator(plt.MaxNLocator(integer=True))  # Chỉ số nguyên
-    
-    # Thêm giá trị
-    for i, v in enumerate(charges):
-        axes[1,0].text(i, v + 0.15, f'{v}', ha='center', fontweight='bold', fontsize=10)
+    # A. QUÉT PHÍA TRƯỚC (Forward Pruning)
+    for i in range(current_node_idx + 1, n_nodes):
+        dist = nodes[i]['km_position'] - curr_km
+        if dist > max_theoretical_range:
+            break  # ⛔ CẮT TỈA: Trạm này quá xa, không bao giờ tới được, dừng vòng lặp ngay
+        candidates.append(i)
 
-    # 4. Tổng thời gian - Line chart
-    total = [r['metrics']['total_time'] for r in routes_data]
-    axes[1,1].plot(x, total, marker='*', linewidth=3, markersize=15, color='#ef4444',
-                   markerfacecolor='white', markeredgewidth=2, markeredgecolor='#ef4444')
-    axes[1,1].fill_between(x, total, alpha=0.2, color='#ef4444')
-    axes[1,1].set_title('Tổng thời gian (phút)', fontweight='bold', pad=15, fontsize=12)
-    axes[1,1].set_ylabel('phút', fontweight='bold')
-    axes[1,1].set_xticks(x)
-    axes[1,1].set_xticklabels(names, rotation=0)
-    axes[1,1].grid(axis='y', alpha=0.3, linestyle='--')
-    # Thêm giá trị
-    for i, v in enumerate(total):
-        axes[1,1].text(i, v + max(total)*0.02, f'{v:.0f}', ha='center', fontweight='bold', fontsize=9)
-    
-    plt.tight_layout(pad=2.5)
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png', bbox_inches='tight', dpi=80, facecolor='white')
-    plt.close(fig)
-    buf.seek(0)
-    return f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode()}"
+    # B. QUÉT PHÍA SAU (Backward - Local Backtracking)
+    for i in range(current_node_idx - 1, -1, -1):
+        dist = curr_km - nodes[i]['km_position']
+        if dist > backtrack_window:
+            break  # ⛔ CẮT TỈA: Quá xa để quay đầu
+        candidates.append(i)
+
+    return candidates
+
+# add_route_to_map removed - map rendering is handled client-side with GoongJS/Leaflet; server returns JSON only.
+# Matplotlib comparison chart generation removed - client-side charts are used instead.
 
 def summarize_route_segments(instructions):
     """
@@ -2428,62 +2143,7 @@ def summarize_route_segments(instructions):
     
     return segments
 
-def create_route_detail_chart(route_data):
-    if not route_data['stops']: return None
-    plt.rcParams['font.family'] = 'DejaVu Sans'
-    plt.rcParams['font.size'] = 11
-    fig, ax = plt.subplots(figsize=(14, 7), dpi=90)
-    fig.patch.set_facecolor('white')
-    fig.patch.set_alpha(0.95)
-    
-    stops = route_data['stops']
-    names = [f"Tram {i+1}\n{s['station']['name'][:15]}..." if len(s['station']['name']) > 15 
-             else f"Tram {i+1}\n{s['station']['name']}" for i, s in enumerate(stops)]
-    arrival = [s['arrival_battery'] for s in stops]
-    departure = [s['end_charge'] for s in stops]
-    
-    x = np.arange(len(names))
-    width = 0.35
-    
-    # Vẽ 2 cột: Pin khi đến, Pin sau sạc
-    bars1 = ax.bar(x - width/2, arrival, width, label='Pin khi đến', 
-                   color='#ef4444', alpha=0.85, edgecolor='white', linewidth=2.5)
-    bars2 = ax.bar(x + width/2, departure, width, label='Pin sau sạc', 
-                   color='#10b981', alpha=0.85, edgecolor='white', linewidth=2.5)
-    
-    ax.set_xlabel('Trạm sạc', fontweight='bold', fontsize=14, labelpad=15)
-    ax.set_ylabel('Mức pin (%)', fontweight='bold', fontsize=14)
-    ax.set_title('Biểu đồ chi tiết pin tại các trạm sạc', fontweight='bold', pad=25, fontsize=17)
-    ax.set_xticks(x)
-    ax.set_xticklabels(names, fontsize=11, ha='center')
-    ax.legend(loc='upper right', framealpha=0.95, fontsize=13, ncol=2)
-    ax.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.8)
-    ax.set_ylim([0, 110])
-    
-    # Thêm đường kẻ ngang tại 100%
-    ax.axhline(y=100, color='#64748b', linestyle='--', linewidth=2, alpha=0.4)
-    if len(names) > 0:
-        ax.text(len(names)-0.5, 103, '100%', fontsize=11, color='#64748b', fontweight='bold')
-    
-    # Thêm giá trị trên các cột
-    for bar in bars1:
-        height = bar.get_height()
-        ax.text(bar.get_x() + bar.get_width()/2., height + 2.5,
-               f'{height:.0f}%', ha='center', va='bottom', 
-               fontsize=12, fontweight='bold', color='#ef4444')
-    
-    for bar in bars2:
-        height = bar.get_height()
-        ax.text(bar.get_x() + bar.get_width()/2., height + 2.5,
-               f'{height:.0f}%', ha='center', va='bottom', 
-               fontsize=12, fontweight='bold', color='#10b981')
-    
-    plt.tight_layout(pad=2.5)
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png', bbox_inches='tight', dpi=90, facecolor='white')
-    plt.close(fig)
-    buf.seek(0)
-    return f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode()}"
+# create_route_detail_chart removed - charts are generated client-side from JSON data.
 
 @app.route('/favicon.ico')
 def favicon():
@@ -2650,13 +2310,21 @@ def find_route():
                 print(f"   - Quãng đường: {route_distance_km:.1f}km")
                 print(f"   - Số điểm: {len(route_coords)}")
                 
+                # Build user filters from request so A* can mark unavoidable events
+                user_filters = {
+                    'avoid_tolls': bool(data.get('avoid_tolls', False)),
+                    'avoid_ferries': bool(data.get('avoid_ferries', False)),
+                    'avoid_highways': bool(data.get('avoid_highways', False))
+                }
+
                 result, err = a_star_ev_routing(
                     start_coords, 
                     end_coords, 
                     route_coords, 
                     float(data.get('start_battery', 100)), 
                     user_config, 
-                    priority='time'
+                    priority='time',
+                    user_filters=user_filters
                 )
                 
                 if result:
@@ -2858,7 +2526,8 @@ def find_route():
                 'name': r['name'], 
                 'metrics': r['metrics'], 
                 'charging_stops': r['stops'],
-                'detail_chart': create_route_detail_chart(r) if r.get('is_best', False) else None,
+                # Charts are generated client-side now; backend returns None to avoid invoking removed server-side functions.
+                'detail_chart': None,
                 'is_best': r.get('is_best', False),
                 'instructions': r['instructions'],
                 'segments': r.get('segments', []),

@@ -115,6 +115,7 @@
         background: var(--white);
         border-bottom: 1px solid var(--gray-200);
         flex-shrink: 0;
+        text-align: center; /* Center align header content */
       }
 
       .sidebar-header h1 {
@@ -122,6 +123,7 @@
         font-weight: 800;
         color: var(--primary-dark);
         letter-spacing: -0.5px;
+        margin: 0; /* Remove default margin */
       }
 
       .sidebar-header .subtitle {
@@ -756,6 +758,19 @@
         align-items: flex-start;
       }
 
+      .feedback-badge {
+        font-size: 0.8rem;
+        padding: 6px 8px;
+        border-radius: 8px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: 600;
+      }
+      .feedback-badge.success { background: #e6f4ea; color: #188038; border: 1px solid #c8e6c9; }
+      .feedback-badge.warning { background: #fff3e0; color: #ef6c00; border: 1px solid #ffe0b2; }
+      .feedback-badge.info { background: #e8f0fe; color: #1a73e8; border: 1px solid #dbeafe; }
+
       .route-time-big {
         font-family: 'Google Sans', sans-serif;
         font-size: 1.5rem;
@@ -1164,6 +1179,9 @@
         border-radius: 8px;
         margin-bottom: 24px;
       }
+
+      /* Popup JSON details removed per UX request */
+
 
       .modal-actions {
         display: flex;
@@ -1982,6 +2000,8 @@
           border: none;
           overflow: hidden;
           min-width: 240px;
+          max-width: 340px;
+          word-break: break-word;
           font-family: "Inter", sans-serif;
       }
 
@@ -2084,6 +2104,30 @@
         box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
         border: 2px solid white;
       }
+      /* Violation (unavoidable) marker style */
+      .pin-dot.violation {
+        background-color: #c5221f !important; /* Đỏ gắt */
+        border: 2px solid #fff;
+        box-shadow: 0 0 0 2px #c5221f, 0 4px 8px rgba(0,0,0,0.3);
+        z-index: 9999;
+      }
+      .pin-dot.violation::after {
+        content: '!';
+        position: absolute;
+        top: -6px;
+        right: -6px;
+        background: #f9ab00; /* Vàng */
+        color: black;
+        font-weight: bold;
+        font-size: 10px;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid white;
+      }
       .pin-dot .icon {
         color: white;
         font-size: 18px;
@@ -2112,6 +2156,35 @@
         font-size: 12px;
         box-shadow: 0 4px 10px rgba(217, 48, 37, 0.4);
         border: 2px solid white;
+      }
+
+      /* Popup warning badge */
+      .popup-badge-warning {
+        background: #ffebee;
+        color: #c62828;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 2px 6px;
+        border-radius: 4px;
+        border: 1px solid #ffcdd2;
+        display: inline-block;
+        margin-bottom: 4px;
+      }
+
+      /* Sidebar warning styles */
+      .travel-event.warning .event-marker {
+        background-color: #ffebee !important;
+        border: 1px solid #ef5350 !important;
+      }
+      .travel-event.warning .event-marker .icon {
+        color: #c62828 !important;
+      }
+      .warning-text {
+        color: #c62828;
+        font-size: 0.75rem;
+        font-weight: 600;
+        display: block;
+        margin-top: 2px;
       }
 
 
@@ -2348,7 +2421,33 @@
         border-color: white transparent transparent transparent;
       }
 
-    </style>
+    .spec-row:hover { background-color: #f9fafb; }
+.spec-row td { padding: 10px; border-bottom: 1px solid #e5e7eb; }
+.apply-btn { padding: 6px 12px; background: transparent; color: var(--gray-700); border: 1px solid #f3f4f6; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 600; transition: all 0.18s ease; }
+.apply-btn:hover { background: var(--primary); color: white; border-color: var(--primary); transform: translateY(-1px); }
+
+/* Small subtle action button */
+.action-btn.small-subtle { padding: 3px 6px; font-size: 0.75rem; border-radius: 6px; background: transparent; color: var(--gray-700); border: 1px solid var(--gray-200); min-width: 96px; flex: 0 0 auto; }
+.action-btn.small-subtle:hover { background: rgba(16,185,129,0.06); color: var(--primary-dark); border-color: rgba(16,185,129,0.15); transform: translateY(-1px); }
+
+/* Modal styles for Car Specs */
+.modal-overlay { display:none; position: fixed; inset: 0; background: rgba(0,0,0,0.35); align-items: center; justify-content: center; z-index: 9999; }
+.modal-overlay.show { display:flex; }
+.modal-content { background: white; padding: 18px; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.12); }
+.modal-title { font-size: 1.05rem; margin-bottom: 8px; }
+.modal-desc { color: var(--gray-700); }
+.modal-actions { display:flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+.modal-btn { padding: 8px 12px; border-radius: 6px; cursor: pointer; border: none; }
+.modal-btn.primary { background: var(--primary); color: white; }
+.modal-btn.secondary { background: #f3f4f6; color: var(--gray-700); }
+.chart-close { background: transparent; border: none; font-size: 18px; cursor: pointer; }
+
+/* Warning icon in modal - compact and aligned */
+.modal-icon { width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; border-radius: 6px; flex: 0 0 48px; font-size: 20px; }
+.modal-icon .material-symbols-rounded { font-size: 24px; }
+
+
+</style>
     <script src="https://cdn.jsdelivr.net/npm/@goongmaps/goong-js@1.0.9/dist/goong-js.js"></script>
     <link
       href="https://cdn.jsdelivr.net/npm/@goongmaps/goong-js@1.0.9/dist/goong-js.css"
@@ -2393,7 +2492,13 @@
             <div class="advanced-content">
               <!-- EV Configuration -->
               <div class="config-section">
-                <h4>Thông số xe điện</h4>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; border-bottom: 0px; padding-bottom: 0px;">
+                  <h4 style="margin: 0; border: none; padding: 0;">Thông số xe điện</h4>
+                  <button type="button" class="action-btn outline small-subtle" onclick="openCarSpecsModal()" aria-label="Cấu hình nhanh">
+                    <span class="icon material-symbols-rounded action-btn-icon" style="font-size: 13px; margin-right: 6px;">directions_car</span>
+                    Cấu hình nhanh
+                  </button>
+                </div>
                 <div class="config-grid">
                   <div class="input-group">
                     <label>Pin hiện tại (%)</label>
@@ -2438,7 +2543,7 @@
                     <input
                       type="number"
                       id="km_remaining"
-                      value="460"
+                      value="{{ (ev_config.battery_capacity / ev_config.consumption * 100) | round | int }}"
                       readonly
                       style="background: var(--gray-100)"
                     />
@@ -2503,7 +2608,7 @@
           </div>
 
           <!-- Search Button -->
-          <button class="search-btn" onclick="findRoute()" id="searchBtn">
+          <button class="search-btn" onclick="validateAndSearch()" id="searchBtn">
             Tìm đường
           </button>
         </div>
@@ -2535,7 +2640,7 @@
               </div>
               <div class="loading-step" id="step-osrm" data-step="4">
                 <div class="step-indicator">4</div>
-                <div class="step-text">Lấy lộ trình từ OSRM</div>
+                <div class="step-text">Đang tính toán lộ trình</div>
                 <div class="step-status"></div>
               </div>
               <div class="loading-step" id="step-charging" data-step="5">
@@ -2686,24 +2791,118 @@
     </div>
 
     <script>
+      // =========================================================
+      // 1. LOGIC TÍNH TOÁN PIN (ĐƯA LÊN ĐẦU ĐỂ TRÁNH BỊ MAP CHẶN)
+      // =========================================================
+      
+      // Hàm tính toán cốt lõi
+      function updateKmRemaining() {
+        const batteryEl = document.getElementById("battery");
+        const consumptionEl = document.getElementById("consumption");
+        const capacityEl = document.getElementById("capacity");
+        const resultEl = document.getElementById("km_remaining");
+
+        // Kiểm tra phần tử tồn tại để tránh lỗi null
+        if (!batteryEl || !consumptionEl || !capacityEl || !resultEl) return;
+
+        const battery = parseFloat(batteryEl.value) || 0;
+        const consumption = parseFloat(consumptionEl.value) || 1; // Tránh chia cho 0
+        const capacity = parseFloat(capacityEl.value) || 0;
+
+        // Công thức: (Pin hiện tại % * Dung lượng) / Tiêu thụ * 100
+        const kwhAvailable = (battery / 100) * capacity;
+        const kmRemaining = (kwhAvailable / consumption) * 100;
+
+        console.log(`🔋 Cập nhật: Pin ${battery}%, Dung lượng ${capacity}kWh, Tiêu thụ ${consumption}kWh/100km => Còn ${Math.round(kmRemaining)}km`);
+        
+        resultEl.value = Math.round(kmRemaining);
+      }
+
+      // Gắn sự kiện lắng nghe (chạy sau khi DOM sẵn sàng)
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', attachKmInputs);
+      } else {
+        attachKmInputs();
+      }
+
+      function attachKmInputs() {
+        const inputIds = ["battery", "consumption", "capacity"];
+        inputIds.forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) {
+            // Xóa sự kiện cũ nếu có để tránh duplicate
+            el.removeEventListener("input", updateKmRemaining); 
+            // Gắn sự kiện mới
+            el.addEventListener("input", updateKmRemaining);
+          }
+        });
+        
+        // Fallback: event delegation
+        if (window.__kmRemainingDelegation) {
+          document.removeEventListener('input', window.__kmRemainingDelegation);
+        }
+        window.__kmRemainingDelegation = function(e) {
+          try {
+            const id = e?.target?.id;
+            if (id === 'battery' || id === 'consumption' || id === 'capacity') updateKmRemaining();
+          } catch (e) {}
+        };
+        document.addEventListener('input', window.__kmRemainingDelegation);
+        
+        // Gọi tính toán một lần ngay khi load
+        updateKmRemaining();
+      }
+
+      // =========================================================
+      // 2. GLOBAL VARIABLES & STATE
+      // =========================================================
       let currentRoutes = [];
+      let cachedNearbyFeatures = null;
+      let activeRouteIndex = 0;
+      
+      // --- Car Specs / Validation logic ---
+      const carDatabase = [
+        { brand: "VinFast", model: "VF e34", capacity: 42, consumption: 15.0 },
+        { brand: "VinFast", model: "VF 5 Plus", capacity: 37, consumption: 13.0 },
+        { brand: "VinFast", model: "VF 8 (Eco)", capacity: 88, consumption: 20.0 },
+        { brand: "VinFast", model: "VF 8 (Plus)", capacity: 88, consumption: 22.0 },
+        { brand: "VinFast", model: "VF 9 (Eco)", capacity: 123, consumption: 24.0 },
+        { brand: "Hyundai", model: "Ioniq 5", capacity: 72, consumption: 16.5 },
+        { brand: "Kia", model: "EV6", capacity: 77, consumption: 17.0 },
+        { brand: "Porsche", model: "Taycan", capacity: 79, consumption: 21.0 }
+      ];
+      
+      // Store click handler references for alt routes to avoid leaks
+      let altRouteClickHandlers = {};
       let loadingInterval = null;
       let loadingStartTime = 0;
-      // let mapInstance = null; // CŨ: Lưu reference đến map hiện tại -> XOÁ
       let infeasibleLayers = []; // Lưu các layer của infeasible route
       let hasWarnedInput = false; // Biến cờ: chỉ cảnh báo 1 lần
       let pendingSearch = null; // Lưu callback khi người dùng bấm confirm
 
-      // --- KHAI BÁO BIẾN TOÀN CỤC ---
-      goongjs.accessToken = "3kieVmAErykLSTEnl574OCGXiv9qUlo1QdK1lqGU"; // Key Map Tiles của bạn
-      var map = new goongjs.Map({
-        container: "map",
-        style: "https://tiles.goong.io/assets/goong_map_web.json",
-        center: [106.660172, 10.762622], // [Lng, Lat]
-        zoom: 5, // Zoom xa để nhìn cả nước
-      });
+      // =========================================================
+      // 3. LOGIC BẢN ĐỒ (GOONG / MAPBOX) - WRAPPED IN TRY-CATCH
+      // =========================================================
+      
+      var map; // Declare map in wider scope
+      
+      try {
+        goongjs.accessToken = "3kieVmAErykLSTEnl574OCGXiv9qUlo1QdK1lqGU";
+        map = new goongjs.Map({
+          container: "map",
+          style: "https://tiles.goong.io/assets/goong_map_web.json",
+          center: [106.660172, 10.762622],
+          zoom: 5,
+        });
 
-      map.addControl(new goongjs.NavigationControl()); // Nút zoom +/-
+        map.addControl(new goongjs.NavigationControl());
+      } catch (e) {
+        console.error("❌ Lỗi khởi tạo bản đồ Goong:", e);
+        const mapEl = document.getElementById('map');
+        if (mapEl) {
+          mapEl.innerHTML = '<div style="padding:40px; text-align:center; color:#d93025"><span class="material-symbols-rounded" style="font-size:48px">error</span><h3>Lỗi tải bản đồ</h3><p>Vui lòng kiểm tra kết nối mạng hoặc liên hệ quản trị viên.</p></div>';
+        }
+      }
 
       // Hàm giải mã Polyline
       function decodePolyline(encoded) {
@@ -2739,7 +2938,7 @@
       }
 
      function drawRouteOnGoong(routes, nearbyFeatures) {
-        // 1. Dọn dẹp layer cũ (Updated list)
+        // 1. Dọn dẹp layer cũ
         [
           "route-layer",
           "route-casing",
@@ -2754,6 +2953,14 @@
           if (map.getSource(id)) map.removeSource(id);
         });
 
+        // Remove previous alt-route layers (simple cleanup)
+        routes.forEach((route, i) => {
+          const layerId = `layer-alt-${i}`;
+          const sourceId = `route-alt-${i}`;
+          if (map.getLayer(layerId)) try { map.removeLayer(layerId); } catch (e) {}
+          if (map.getSource(sourceId)) try { map.removeSource(sourceId); } catch (e) {}
+        });
+
         // Clear markers
         document.querySelectorAll(".gm-marker").forEach((el) => el.remove());
 
@@ -2762,7 +2969,7 @@
         if (placeholder) placeholder.style.display = "none";
         document.getElementById("mapLegend").style.display = "block";
 
-        // --- LOGIC VẼ ĐƯỜNG (The "Halo" Effect) ---
+        // --- VẼ ALTERNATIVE ROUTES (chỉ đường xám, không tương tác) ---
         routes.forEach((route, index) => {
           if (route.is_best) return;
           const geoJSON = {
@@ -2773,29 +2980,20 @@
             },
           };
           const sourceId = `route-alt-${index}`;
-          // Cleanup alt layers
-          if (map.getSource(sourceId)) {
-            if (map.getLayer(`layer-alt-${index}`))
-              map.removeLayer(`layer-alt-${index}`);
-            map.removeSource(sourceId);
-          }
           
           map.addSource(sourceId, { type: "geojson", data: geoJSON });
-          // Alternative Route: Neutral Grey, Thinner
-          map.addLayer(
-            {
-              id: `layer-alt-${index}`,
-              type: "line",
-              source: sourceId,
-              layout: { "line-join": "round", "line-cap": "round" },
-              paint: {
-                "line-color": "#9AA0A6", /* Google Grey 500 */
-                "line-width": 4,
-                "line-opacity": 0.8,
-              },
-            }
-            // Removed "road-label" to fix error
-          );
+          // Alternative Route: Neutral Grey, Thinner (không có click handler)
+          map.addLayer({
+            id: `layer-alt-${index}`,
+            type: "line",
+            source: sourceId,
+            layout: { "line-join": "round", "line-cap": "round" },
+            paint: {
+              "line-color": "#C0C0C0",
+              "line-width": 5,
+              "line-opacity": 0.6,
+            },
+          });
         });
 
         const bestRoute = routes.find((r) => r.is_best) || routes[0];
@@ -2840,22 +3038,69 @@
         );
 
         // 5. Vẽ Marker Điểm đi / Điểm đến (Update colors/icons)
+        // Backend trả geometry_coords theo format [Lat, Lon]
         const startCoord = bestRoute.geometry_coords[0];
         const endCoord =
           bestRoute.geometry_coords[bestRoute.geometry_coords.length - 1];
 
-        addMarker(
-          [startCoord[1], startCoord[0]],
-          "trip_origin",
-          "start",
-          "<b>Điểm xuất phát</b>"
-        );
-        addMarker(
-          [endCoord[1], endCoord[0]],
-          "flag",
-          "end",
-          "<b>Điểm đến</b>"
-        );
+        // Fallback: nếu backend chưa trả startPoint/endPoint thì lấy từ input + geometry
+        const startPoint = {
+          lat: startCoord?.[0],
+          lon: startCoord?.[1],
+          name: document.getElementById("start")?.value?.trim() || "Điểm xuất phát",
+        };
+        const endPoint = {
+          lat: endCoord?.[0],
+          lon: endCoord?.[1],
+          name: document.getElementById("end")?.value?.trim() || "Điểm đến",
+        };
+
+        // Đảm bảo bestRoute.distance_km có giá trị để dùng trong popup (backend hiện dùng metrics.total_distance)
+        if (bestRoute && (bestRoute.distance_km === undefined || bestRoute.distance_km === null)) {
+          bestRoute.distance_km = bestRoute.metrics?.total_distance;
+        }
+
+        // 2. Điểm xuất phát
+        const startLngLat = [startPoint.lon, startPoint.lat];
+        let startPopupHTML = '';
+        try {
+          startPopupHTML = `
+            <div class="popup-header" style="color: #1a73e8"> <span class="icon material-symbols-rounded" style="font-size:14px">my_location</span>
+                ĐIỂM XUẤT PHÁT
+            </div>
+            <div class="popup-body">
+                <div class="popup-title">${startPoint.name}</div>
+                <div class="popup-row">
+                    <span class="icon material-symbols-rounded" style="font-size:16px">place</span>
+                    <span style="font-size:12px; color:#70757a">Vị trí bắt đầu lộ trình</span>
+                </div>
+            </div>
+        `;
+        } catch (e) { startPopupHTML = `<div>Điểm xuất phát</div>`; }
+        addMarker(startLngLat, "my_location", "start", startPopupHTML, startPoint);
+
+        // 3. Điểm kết thúc
+        const endLngLat = [endPoint.lon, endPoint.lat];
+        let endPopupHTML = '';
+        try {
+          endPopupHTML = `
+            <div class="popup-header" style="color: #d93025"> <span class="icon material-symbols-rounded" style="font-size:14px">flag</span>
+                ĐIỂM ĐẾN
+            </div>
+            <div class="popup-body">
+                <div class="popup-title">${endPoint.name}</div>
+                <div class="popup-row">
+                    <span class="icon material-symbols-rounded" style="font-size:16px">place</span>
+                    <span style="font-size:12px; color:#70757a">Đích đến của bạn</span>
+                </div>
+                <div class="popup-row">
+                    <span class="icon material-symbols-rounded" style="font-size:16px">directions_car</span>
+                    <span>Tổng quãng đường: <b>${(bestRoute.distance_km || 0).toFixed(1)} km</b></span>
+                </div>
+            </div>
+        `;
+        } catch (e) { endPopupHTML = `<div>Điểm đến</div>`; }
+        addMarker(endLngLat, "flag", "end", endPopupHTML, endPoint);
 
         // 6. Vẽ Trạm Sạc
         if (bestRoute.charging_stops) {
@@ -2909,84 +3154,113 @@
               [stop.station.lon, stop.station.lat],
               "ev_station",
               "station",
-              popupHTML
+              popupHTML,
+              stop.station
             );
           });
         }
 
         // 7. Vẽ Sự Kiện (Phà, Thu phí...)
-        if (bestRoute.travel_events) {
-            bestRoute.travel_events.forEach((event) => {
-                if (!event.coords) return;
-                const lngLat = [event.coords[1], event.coords[0]];
+        // 7. Vẽ Sự Kiện (Phà, Thu phí...)
+        if (bestRoute.travel_events && Array.isArray(bestRoute.travel_events)) {
+            console.log("🔍 Đang vẽ events:", bestRoute.travel_events); // Debug Log
+
+            bestRoute.travel_events.forEach((event, idx) => {
+                // Kiểm tra an toàn dữ liệu
+                if (!event || !event.coords || event.coords.length < 2) {
+                    console.warn("⚠️ Event thiếu tọa độ tại index:", idx, event);
+                    return;
+                }
+
+                // Đảm bảo tọa độ là số (parseFloat)
+                const lat = parseFloat(event.coords[0]);
+                const lng = parseFloat(event.coords[1]);
                 
+                // GoongJS nhận [Lng, Lat]. Kiểm tra backend trả về [Lat, Lng] hay [Lng, Lat]?
+                // Giả sử backend trả [Lat, Lng] (thông dụng với Python), ta cần đảo lại:
+                const lngLat = [lng, lat]; 
+
                 let popupHTML = "";
-                let iconType = "";
+                let iconType = "info"; // Default icon
                 let headerColor = "#5f6368";
 
                 // === TEMPLATE CHO TRẠM THU PHÍ ===
                 if (event.type === "toll") {
-                    iconType = "toll";
-                    headerColor = "#f9ab00"; // Vàng cam
-                    const highwayName = event.details && event.details.highway !== 'N/A' 
-                        ? event.details.highway 
-                        : 'Đường quốc lộ';
+                  // Note: Always render toll markers if they lie on the route.
+                  // The visual state (color / badge) below will indicate warnings when applicable.
+
+                  iconType = "toll";
+                  headerColor = event.warning ? "#c5221f" : "#f9ab00"; // Đỏ nếu bắt buộc
+                  const highwayName = event.details && event.details.highway !== 'N/A' 
+                    ? event.details.highway 
+                    : 'Đường quốc lộ';
+                  const warningBadge = event.warning ? `<div class="popup-badge-warning">⚠️ KHÔNG THỂ TRÁNH</div>` : '';
                     
-                    popupHTML = `
-                        <div class="popup-header" style="color: ${headerColor}">
-                            <span class="icon material-symbols-rounded" style="font-size:14px">toll</span>
-                            TRẠM THU PHÍ
-                        </div>
-                        <div class="popup-body">
-                            <div class="popup-title">${event.name}</div>
-                            <div class="popup-row">
-                                <span class="icon material-symbols-rounded" style="font-size:16px">add_road</span>
-                                <span>${highwayName}</span>
-                            </div>
-                            <div class="popup-row">
-                                <span class="icon material-symbols-rounded" style="font-size:16px">payments</span>
-                                <span class="popup-cost">${formatCurrency(event.cost)}</span>
-                            </div>
-                        </div>
-                        <div class="popup-footer">
-                            <span>Cách điểm đi: ${Math.round(event.km)}km</span>
-                        </div>
-                    `;
-                } 
+                  popupHTML = `
+                    <div class="popup-header" style="color: ${headerColor}">
+                      <span class="icon material-symbols-rounded" style="font-size:14px">toll</span>
+                      ${event.warning ? 'TRẠM THU PHÍ (BẮT BUỘC)' : 'TRẠM THU PHÍ'}
+                    </div>
+                    <div class="popup-body">
+                      ${warningBadge}
+                      <div class="popup-title">${event.name}</div>
+                      <div class="popup-row">
+                        <span class="icon material-symbols-rounded" style="font-size:16px">add_road</span>
+                        <span>${highwayName}</span>
+                      </div>
+                      <div class="popup-row">
+                        <span class="icon material-symbols-rounded" style="font-size:16px">payments</span>
+                        <span class="popup-cost">${formatCurrency(event.cost)}</span>
+                      </div>
+                    </div>
+                    <div class="popup-footer">
+                      <span>Cách điểm đi: ${Math.round(event.km)}km</span>
+                    </div>
+                  `;
+                }
                 
                 // === TEMPLATE CHO PHÀ ===
                 else if (event.type === "ferry") {
-                    iconType = "ferry";
-                    headerColor = "#1e3a8a"; // Xanh đậm
-                    const waitTime = event.details ? event.details.crossing_time_min : 15;
-                    const vehicleInfo = event.details && event.details.vehicle_allowed 
-                        ? event.details.vehicle_allowed 
-                        : 'Ô tô & Xe máy';
+                  // Note: Always render ferry markers if they lie on the route.
+                  // Visual state below (headerColor / warningBadge) will indicate warnings when applicable.
+
+                  iconType = "directions_boat";
+                  headerColor = event.warning ? "#c5221f" : "#1e3a8a"; // Đỏ nếu bắt buộc
+                  const waitTime = event.details ? event.details.crossing_time_min : 15;
+                  const vehicleInfo = event.details && event.details.vehicle_allowed 
+                    ? event.details.vehicle_allowed 
+                    : 'Ô tô & Xe máy';
+                  const warningBadge = event.warning ? `<div class="popup-badge-warning">⚠️ KHÔNG THỂ TRÁNH</div>` : '';
                     
-                    popupHTML = `
-                        <div class="popup-header" style="color: ${headerColor}">
-                            <span class="icon material-symbols-rounded" style="font-size:14px">directions_boat</span>
-                            BẾN PHÀ
-                        </div>
-                        <div class="popup-body">
-                            <div class="popup-title">${event.name}</div>
-                            <div class="popup-row">
-                                <span class="icon material-symbols-rounded" style="font-size:16px">schedule</span>
-                                <span>Thời gian qua phà: ~${waitTime}p</span>
-                            </div>
-                             <div class="popup-row">
-                                <span class="icon material-symbols-rounded" style="font-size:16px">directions_car</span>
-                                <span style="font-size:12px">${vehicleInfo}</span>
-                            </div>
-                            <div class="popup-row">
-                                <span class="icon material-symbols-rounded" style="font-size:16px">payments</span>
-                                <span class="popup-cost">${formatCurrency(event.cost)}</span>
-                            </div>
-                        </div>
-                        <div class="popup-footer">
-                            <span>Tại km số: ${event.km.toFixed(1)}</span>
-                        </div>
-                    `;
+                  popupHTML = `
+                    <div class="popup-header" style="color: ${headerColor}">
+                      <span class="icon material-symbols-rounded" style="font-size:14px">directions_boat</span>
+                      ${event.warning ? 'BẾN PHÀ (BẮT BUỘC)' : 'BẾN PHÀ'}
+                    </div>
+                    <div class="popup-body">
+                      ${warningBadge}
+                      <div class="popup-title">${event.name}</div>
+                      <div class="popup-row" style="align-items:flex-start; margin-bottom:8px;">
+                        <span class="icon material-symbols-rounded" style="font-size:16px; margin-top:2px">place</span>
+                        <span style="font-size:12px; color:#70757a;">${event.address || 'Đang cập nhật địa chỉ'}</span>
+                      </div>
+                      <div class="popup-row">
+                        <span class="icon material-symbols-rounded" style="font-size:16px">schedule</span>
+                        <span>Thời gian qua phà: ~${waitTime}p</span>
+                      </div>
+                       <div class="popup-row">
+                        <span class="icon material-symbols-rounded" style="font-size:16px">directions_car</span>
+                        <span style="font-size:12px">${vehicleInfo}</span>
+                      </div>
+                      <div class="popup-row">
+                        <span class="icon material-symbols-rounded" style="font-size:16px">payments</span>
+                        <span class="popup-cost">${formatCurrency(event.cost || event.price || 0)}</span>
+                      </div>
+                    </div>
+                    <div class="popup-footer">
+                      <span>Tại km số: ${event.km.toFixed(1)}</span>
+                    </div>
+                  `;
                 }
                 
                 // === TEMPLATE CHO TRẠM DỪNG NGHỈ (HIGHWAY STOP) ===
@@ -3016,10 +3290,14 @@
                     `;
                 }
 
+                // Chỉ add marker nếu có popupHTML
                 if (popupHTML) {
-                    addMarker(lngLat, iconType, event.type, popupHTML);
+                    addMarker(lngLat, iconType, event.type, popupHTML, event);
+                    console.debug("Added event marker:", event.type, event.name || event.id || "(no name)");
                 }
             });
+        } else {
+            console.log("ℹ️ Không tìm thấy travel_events trong response");
         }
 
         // 8. Vẽ Nearby Features
@@ -3028,23 +3306,239 @@
             const isSelected = bestRoute.charging_stops?.some(
               (stop) => stop.station.name === s.name
             );
-            if (!isSelected)
-              addMarker(
-                [s.lon, s.lat],
-                "ev_station",
-                "nearby",
-                `<b>${s.name}</b><br>${s.power || "?"}kW`
-              );
-          });
-        }
+            if (!isSelected) {
+              const stationPopup = `
+                <div class="popup-header" style="color: #188038">
+                  <span class="icon material-symbols-rounded" style="font-size:14px">ev_station</span>
+                  TRẠM SẠC
+                </div>
+                <div class="popup-body">
+                  <div class="popup-title">${s.name}</div>
+                  <div class="popup-row" style="align-items:flex-start; margin-bottom:8px;">
+                    <span class="icon material-symbols-rounded" style="font-size:16px; margin-top:2px;">place</span>
+                    <span style="font-size:12px; color:#70757a;">${s.address || 'Đang cập nhật địa chỉ'}</span>
+                  </div>
+                  <div class="popup-row">
+                    <span class="icon material-symbols-rounded" style="font-size:16px; color:#fbbc04">bolt</span>
+                    <span style="font-weight:600">${s.power || '?'} kW</span>
+                  </div>
+                  <div class="popup-row">
+                    <span class="icon material-symbols-rounded" style="font-size:16px">payments</span>
+                    <span class="popup-cost">${formatCurrency(s.cost || s.price || 0)}</span>
+                  </div>
+                </div>
+                <div class="popup-footer">
+                  <span>${s.status || 'Sẵn sàng'}</span>
+                </div>
+              `;
 
-        // 9. Zoom Map
+              addMarker([s.lon, s.lat], "ev_station", "nearby", stationPopup, s);
+            }
+          });
+        } 
+
+        // 9. Zoom
         const coordinates = bestGeoJSON.geometry.coordinates;
         const bounds = coordinates.reduce(
           (bounds, coord) => bounds.extend(coord),
           new goongjs.LngLatBounds(coordinates[0], coordinates[0])
         );
         map.fitBounds(bounds, { padding: 80 });
+
+      // === DEV: Helper to add a sample ferry marker for quick testing ===
+      function addSampleFerryMarker() {
+        try {
+          const center = map.getCenter();
+          const sample = {
+            name: 'Bến phà thử nghiệm',
+            address: 'Cầu thử, Quận Test',
+            details: { crossing_time_min: 20, vehicle_allowed: 'Ô tô & Xe máy' },
+            cost: 0,
+            km: 0
+          };
+          const lngLat = [center.lng, center.lat];
+          // Reuse ferry popup template
+          const headerColor = '#1e3a8a';
+          const waitTime = sample.details.crossing_time_min;
+          const vehicleInfo = sample.details.vehicle_allowed;
+
+          const popupHTML = `
+            <div class="popup-header" style="color: ${headerColor}">
+              <span class="icon material-symbols-rounded" style="font-size:14px">directions_boat</span>
+              BẾN PHÀ
+            </div>
+            <div class="popup-body">
+              <div class="popup-title">${sample.name}</div>
+              <div class="popup-row" style="align-items:flex-start; margin-bottom:8px;">
+                <span class="icon material-symbols-rounded" style="font-size:16px; margin-top:2px">place</span>
+                <span style="font-size:12px; color:#70757a;">${sample.address}</span>
+              </div>
+              <div class="popup-row">
+                <span class="icon material-symbols-rounded" style="font-size:16px">schedule</span>
+                <span>Thời gian qua phà: ~${waitTime}p</span>
+              </div>
+              <div class="popup-row">
+                <span class="icon material-symbols-rounded" style="font-size:16px">payments</span>
+                <span class="popup-cost">${formatCurrency(sample.cost)}</span>
+              </div>
+            </div>
+            <div class="popup-footer">
+              <span>Vị trí thử nghiệm</span>
+            </div>
+          `;
+
+          addMarker(lngLat, 'directions_boat', 'ferry', popupHTML, sample);
+          console.info('Sample ferry marker added at', lngLat);
+        } catch (e) {
+          console.warn('Cannot add sample ferry marker', e);
+        }
+      }
+      }
+
+      // Save to global state (simplified)
+      if (typeof routes !== 'undefined' && routes) {
+        currentRoutes = routes;
+      }
+      if (typeof nearbyFeatures !== 'undefined') {
+        cachedNearbyFeatures = nearbyFeatures || cachedNearbyFeatures;
+      }
+
+      // Simplified: No need for renderSelectedRoute - best route already displayed
+      function renderSelectedRoute_REMOVED(index) {
+        if (!currentRoutes || !currentRoutes[index]) return;
+        const sel = currentRoutes[index];
+
+        // Ensure alternative routes are drawn first (so selected route appears on top)
+        try {
+          currentRoutes.forEach((route, i) => {
+            if (i === index) return;
+            const sourceId = `route-alt-${i}`;
+            const visibleLayerId = `layer-alt-${i}`;
+            const clickLayerId = `${visibleLayerId}-click`;
+            const geoJSON = { type: 'Feature', geometry: { type: 'LineString', coordinates: route.geometry_coords.map((c) => [c[1], c[0]]) } };
+
+            // Update source data or create source
+            if (map.getSource(sourceId)) {
+              try { map.getSource(sourceId).setData(geoJSON); } catch(e) {}
+            } else {
+              try { map.addSource(sourceId, { type: 'geojson', data: geoJSON }); } catch(e) {}
+            }
+
+            // Visible thin alt layer
+            if (!map.getLayer(visibleLayerId)) {
+              try {
+                map.addLayer({ id: visibleLayerId, type: 'line', source: sourceId, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#9AA0A6', 'line-width': 5, 'line-opacity': 0.8 } });
+              } catch(e) {}
+            } else {
+              try { map.setPaintProperty(visibleLayerId, 'line-width', 5); map.setPaintProperty(visibleLayerId, 'line-color', '#9AA0A6'); } catch(e) {}
+            }
+
+            // Ensure transparent click layer above it for easier tapping
+            try {
+              if (altRouteClickHandlers[i]) {
+                try { map.off('click', clickLayerId, altRouteClickHandlers[i]); } catch(e) {}
+                try { map.off('mouseenter', clickLayerId, altRouteClickHandlers[i + '_enter']); } catch(e) {}
+                try { map.off('mouseleave', clickLayerId, altRouteClickHandlers[i + '_leave']); } catch(e) {}
+                delete altRouteClickHandlers[i]; delete altRouteClickHandlers[i + '_enter']; delete altRouteClickHandlers[i + '_leave'];
+              }
+
+              if (map.getLayer(clickLayerId)) try { map.removeLayer(clickLayerId); } catch(e) {}
+              map.addLayer({ id: clickLayerId, type: 'line', source: sourceId, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-width': 20, 'line-opacity': 0 } });
+
+              const onClick = () => { showRouteDetail(i); renderSelectedRoute(i); };
+              const onEnter = () => map.getCanvas().style.cursor = 'pointer';
+              const onLeave = () => map.getCanvas().style.cursor = '';
+
+              altRouteClickHandlers[i] = onClick;
+              altRouteClickHandlers[i + '_enter'] = onEnter;
+              altRouteClickHandlers[i + '_leave'] = onLeave;
+
+              map.on('click', clickLayerId, onClick);
+              map.on('mouseenter', clickLayerId, onEnter);
+              map.on('mouseleave', clickLayerId, onLeave);
+            } catch(e) { console.warn('Alt route click layer error', e); }
+          });
+        } catch (e) { console.warn('Alt route render failed', e); }
+
+        // Remove existing 'route-best' related layers/sources (safe)
+        ["route-best", "route-layer", "route-casing", "route-source", "route-outline"].forEach((id) => {
+          if (map.getLayer(id)) try { map.removeLayer(id); } catch (e) {}
+          if (map.getSource(id)) try { map.removeSource(id); } catch (e) {}
+        });
+
+        // Add source and layers for selected route
+        const selGeo = { type: "Feature", geometry: { type: "LineString", coordinates: sel.geometry_coords.map((c) => [c[1], c[0]]) } };
+        map.addSource("route-best", { type: "geojson", data: selGeo });
+        map.addLayer({ id: "route-casing", type: "line", source: "route-best", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": "#1557b0", "line-width": 10, "line-opacity": 0.8 } });
+        map.addLayer({ id: "route-layer", type: "line", source: "route-best", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": "#1A73E8", "line-width": 6 } });
+
+        // Remove existing markers and redraw
+        document.querySelectorAll(".gm-marker").forEach((el) => el.remove());
+
+        // Draw Markers for selected
+        try { drawRouteMarkers(sel, cachedNearbyFeatures); } catch (e) { console.warn('Cannot draw selected route markers', e); }
+
+        // Fit bounds
+        try {
+          const coords = sel.geometry_coords.map((c) => [c[1], c[0]]);
+          const bounds = coords.reduce((bounds, coord) => bounds.extend(coord), new goongjs.LngLatBounds(coords[0], coords[0]));
+          map.fitBounds(bounds, { padding: { top: 50, bottom: 50, left: 50, right: 350 } });
+        } catch (e) { console.warn('fitBounds failed', e); }
+      }
+
+      function drawRouteMarkers(route, nearbyFeatures) {
+        if (!route) return;
+
+        // Start / End
+        const start = route.geometry_coords[0];
+        const end = route.geometry_coords[route.geometry_coords.length - 1];
+        addMarker([start[1], start[0]], "my_location", "start", `<div class=\"popup-header\" style=\"color: #1a73e8\"><span class=\"icon material-symbols-rounded\" style=\"font-size:14px\">my_location</span> ĐIỂM XUẤT PHÁT</div><div class=\"popup-body\"><div class=\"popup-title\">${document.getElementById('start')?.value || 'Điểm đi'}</div></div>`, {});
+        addMarker([end[1], end[0]], "flag", "end", `<div class=\"popup-header\" style=\"color: #d93025\"><span class=\"icon material-symbols-rounded\" style=\"font-size:14px\">flag</span> ĐIỂM ĐẾN</div><div class=\"popup-body\"><div class=\"popup-title\">${document.getElementById('end')?.value || 'Điểm đến'}</div><div class=\"popup-row\">Tổng: <b>${(route.metrics?.total_distance || route.distance_km || 0).toFixed(1)} km</b></div></div>`, {});
+
+        // Charging stops
+        if (route.charging_stops) {
+          route.charging_stops.forEach((stop, idx) => {
+            const p = stop.station; const power = p.power || 150; const powerLabel = power >= 150 ? 'Siêu nhanh (DC)' : (power >= 50 ? 'Nhanh (DC)' : 'Thường (AC)');
+            const popup = `<div class=\"popup-header\" style=\"color: #188038\"><span class=\"icon material-symbols-rounded\" style=\"font-size:14px\">ev_station</span> TRẠM SẠC ĐIỆN #${idx+1}</div><div class=\"popup-body\"><div class=\"popup-title\">${p.name}</div><div class=\"popup-row\"><span class=\"icon material-symbols-rounded\">bolt</span><span>${power} kW • ${powerLabel}</span></div><div class=\"popup-row\">Sạc: <b style=\"color:#d93025\">${stop.start_charge}%</b> ➝ <b style=\"color:#188038\">${stop.end_charge}%</b></div><div class=\"popup-row\">Thời gian: <b>${stop.charge_time} phút</b></div><div class=\"popup-row\">Giá: <b>${formatCurrency(stop.charging_cost)}</b></div></div>`;
+            addMarker([p.lon, p.lat], 'ev_station', 'station', popup, p);
+          });
+        }
+
+        // Travel events
+        if (route.travel_events && Array.isArray(route.travel_events)) {
+          route.travel_events.forEach((event) => {
+            try {
+              if (!event || !event.coords) return;
+              const lat = parseFloat(event.coords[0]); const lng = parseFloat(event.coords[1]); const lngLat = [lng, lat];
+              let popupHTML = '';
+              if (event.type === 'toll') {
+                const headerColor = event.warning ? '#c5221f' : '#f9ab00';
+                const highwayName = event.details && event.details.highway !== 'N/A' ? event.details.highway : 'Đường quốc lộ';
+                const warningBadge = event.warning ? `<div class=\"popup-badge-warning\">⚠️ KHÔNG THỂ TRÁNH</div>` : '';
+                popupHTML = `<div class=\"popup-header\" style=\"color: ${headerColor}\"><span class=\"icon material-symbols-rounded\" style=\"font-size:14px\">toll</span>${event.warning ? 'TRẠM THU PHÍ (BẮT BUỘC)' : 'TRẠM THU PHÍ'}</div><div class=\"popup-body\">${warningBadge}<div class=\"popup-title\">${event.name}</div><div class=\"popup-row\"><span class=\"icon material-symbols-rounded\">add_road</span><span>${highwayName}</span></div><div class=\"popup-row\"><span class=\"icon material-symbols-rounded\">payments</span><span class=\"popup-cost\">${formatCurrency(event.cost)}</span></div></div><div class=\"popup-footer\">Cách điểm đi: ${Math.round(event.km)}km</div>`;
+              } else if (event.type === 'ferry') {
+                const headerColor = event.warning ? '#c5221f' : '#1e3a8a'; const waitTime = event.details ? event.details.crossing_time_min : 15; const vehicleInfo = event.details && event.details.vehicle_allowed ? event.details.vehicle_allowed : 'Ô tô & Xe máy'; const warningBadge = event.warning ? `<div class=\"popup-badge-warning\">⚠️ KHÔNG THỂ TRÁNH</div>` : '';
+                popupHTML = `<div class=\"popup-header\" style=\"color: ${headerColor}\"><span class=\"icon material-symbols-rounded\">directions_boat</span>${event.warning ? 'BẾN PHÀ (BẮT BUỘC)' : 'BẾN PHÀ'}</div><div class=\"popup-body\">${warningBadge}<div class=\"popup-title\">${event.name}</div><div class=\"popup-row\" style=\"align-items:flex-start; margin-bottom:8px;\"><span class=\"icon material-symbols-rounded\" style=\"font-size:16px; margin-top:2px\">place</span><span style=\"font-size:12px; color:#70757a;\">${event.address || 'Đang cập nhật địa chỉ'}</span></div><div class=\"popup-row\"><span class=\"icon material-symbols-rounded\">schedule</span><span>Thời gian qua phà: ~${waitTime}p</span></div><div class=\"popup-row\"><span class=\"icon material-symbols-rounded\">directions_car</span><span style=\"font-size:12px\">${vehicleInfo}</span></div><div class=\"popup-row\"><span class=\"icon material-symbols-rounded\">payments</span><span class=\"popup-cost\">${formatCurrency(event.cost || event.price || 0)}</span></div></div><div class=\"popup-footer\">Tại km số: ${event.km.toFixed(1)}</div>`;
+              } else if (event.type === 'highway_stop') {
+                const headerColor = '#e67c73'; const amenities = event.details && event.details.amenities ? (Array.isArray(event.details.amenities) ? event.details.amenities.join(', ') : event.details.amenities) : 'WC, Ăn uống, Đổ xăng';
+                popupHTML = `<div class=\"popup-header\" style=\"color: ${headerColor}\"><span class=\"icon material-symbols-rounded\">local_gas_station</span>TRẠM DỪNG NGHỈ</div><div class=\"popup-body\"><div class=\"popup-title\">${event.name}</div><div class=\"popup-row\" style=\"align-items: flex-start\"><span class=\"icon material-symbols-rounded\" style=\"font-size:16px; margin-top:2px\">storefront</span><span style=\"font-size:12px; color:#70757a; line-height: 1.4;\">${amenities}</span></div></div><div class=\"popup-footer\">Tại km số: ${event.km.toFixed(1)}</div>`;
+              }
+              if (popupHTML) addMarker(lngLat, event.type === 'toll' ? 'toll' : (event.type === 'ferry' ? 'directions_boat' : 'local_gas_station'), event.type, popupHTML, event);
+            } catch (e) { console.warn('Event render failed', e); }
+          });
+        }
+
+        // Nearby features
+        if (nearbyFeatures && nearbyFeatures.charging) {
+          nearbyFeatures.charging.forEach((s) => {
+            const isSelected = route.charging_stops?.some((stop) => stop.station.name === s.name);
+            if (!isSelected) {
+              const stationPopup = `<div class=\"popup-header\" style=\"color: #188038\"><span class=\"icon material-symbols-rounded\">ev_station</span>TRẠM SẠC</div><div class=\"popup-body\"><div class=\"popup-title\">${s.name}</div><div class=\"popup-row\" style=\"align-items:flex-start; margin-bottom:8px;\"><span class=\"icon material-symbols-rounded\" style=\"font-size:16px; margin-top:2px;\">place</span><span style=\"font-size:12px; color:#70757a;\">${s.address || 'Đang cập nhật địa chỉ'}</span></div><div class=\"popup-row\"><span class=\"icon material-symbols-rounded\" style=\"font-size:16px; color:#fbbc04\">bolt</span><span style=\"font-weight:600\">${s.power || '?'} kW</span></div><div class=\"popup-row\"><span class=\"icon material-symbols-rounded\"\">payments</span><span class=\"popup-cost\">${formatCurrency(s.cost || s.price || 0)}</span></div></div><div class=\"popup-footer\">${s.status || 'Sẵn sàng'}</div>`;
+              addMarker([s.lon, s.lat], "ev_station", "nearby", stationPopup, s);
+            }
+          });
+        }
+
       }
 
 // === HÀM VẼ LỘ TRÌNH KHÔNG KHẢ THI TRÊN GOONG (MD3 STYLE) ===
@@ -3166,14 +3660,44 @@
             stationCoord,
             "ev_station",
             "nearby",
-            `<div style="text-align:center"><b style="color:#1a73e8">TRẠM SẠC GẦN NHẤT</b><br><b>${data.nearest_station_to_failure.name}</b><br>Cách: ${data.nearest_station_to_failure.distance_km}km</div>`
+            `<div style="text-align:center"><b style="color:#1a73e8">TRẠM SẠC GẦN NHẤT</b><br><b>${data.nearest_station_to_failure.name}</b><br>Cách: ${data.nearest_station_to_failure.distance_km}km</div>`,
+            data.nearest_station_to_failure
           );
         }
 
-        // 6. Vẽ Marker
-        addMarker(startCoord, "trip_origin", "start", "Điểm xuất phát");
+        // 6. Vẽ Marker (Structured Popups for better layout)
+        addMarker(
+          startCoord,
+          "trip_origin",
+          "start",
+          `
+            <div class="popup-header" style="color:#1a73e8">
+              <span class="icon material-symbols-rounded" style="font-size:14px">my_location</span>
+              ĐIỂM XUẤT PHÁT
+            </div>
+            <div class="popup-body">
+              <div class="popup-title">Điểm xuất phát</div>
+              <div class="popup-row"><span class="icon material-symbols-rounded">place</span><span style="color:#5f6368;font-size:12px">Vị trí bắt đầu lộ trình (theo GeoCoder)</span></div>
+            </div>
+          `
+        );
+
         // Điểm đến (Unreachable state)
-        addMarker(endCoord, "flag", "end-unreachable", "Đích (Không thể tới)");
+        addMarker(
+          endCoord,
+          "flag",
+          "end-unreachable",
+          `
+            <div class="popup-header" style="color:#9aa0a6">
+              <span class="icon material-symbols-rounded" style="font-size:14px">flag</span>
+              ĐÍCH (KHÔNG THỂ TỚI)
+            </div>
+            <div class="popup-body">
+              <div class="popup-title popup-warning">Không thể tới đích với pin hiện tại</div>
+              <div class="popup-row"><span class="icon material-symbols-rounded">info</span><span style="color:#5f6368;font-size:12px">Bạn đã đi đến giới hạn pin. Xem các gợi ý trong thẻ 'Không khả thi'.</span></div>
+            </div>
+          `
+        );
 
         // Điểm Chết (Failure Point - Focal Point)
         if (failCoord) {
@@ -3181,7 +3705,21 @@
             failCoord,
             "bolt",
             "fail-md3",
-            "<b>⚠️ HẾT PIN TẠI ĐÂY</b><br>Vui lòng sạc thêm hoặc tìm trạm gần nhất."
+            `
+              <div class="popup-header" style="color:#d93025">
+                <span class="icon material-symbols-rounded" style="font-size:14px">battery_alert</span>
+                HẾT PIN TẠI ĐÂY
+              </div>
+              <div class="popup-body">
+                <div class="popup-title popup-warning">⚠️ HẾT PIN</div>
+                <div class="popup-row"><span class="icon material-symbols-rounded">place</span><span style="color:#5f6368;font-size:13px">Bạn đã đi đến điểm không thể tiếp tục với pin hiện tại.</span></div>
+                <div class="popup-row"><span class="icon material-symbols-rounded">ev_station</span><span style="color:#5f6368;font-size:13px">Gợi ý: Tìm trạm sạc gần nhất hoặc giả lập pin 100%.</span></div>
+                <div style="margin-top:8px; display:flex; gap:8px;">
+                  <button class="md3-chip primary" onclick="applySuggestion('Sạc đầy 100%', 0); document.querySelector('.gm-marker')?.dispatchEvent(new Event('mouseleave'))">Giả lập Pin 100%</button>
+                  <button class="md3-chip secondary" onclick="panToNearestStation(${data.nearest_station_to_failure ? data.nearest_station_to_failure.lat : '0'}, ${data.nearest_station_to_failure ? data.nearest_station_to_failure.lon : '0'})">Tới trạm gần nhất</button>
+                </div>
+              </div>
+            `
           );
         }
 
@@ -3198,7 +3736,7 @@
       }
 
       // === HÀM TẠO MARKER CHUẨN GOOGLE MAPS STYLE (ĐÃ SỬA) ===
-      function addMarker(lngLat, iconName, type, popupHTML) {
+      function addMarker(lngLat, iconName, type, popupHTML, dataObj) {
         const el = document.createElement("div");
         el.className = "gm-marker"; // Class chung để dễ quản lý xóa
 
@@ -3269,7 +3807,7 @@
             // Rotated 40px square, center is roughly at 0, -20px visually if pointing down?
             // Actually it's an inverted drop, pointing down-ish. 
             // Let's use [0, -20] as center.
-            createGoongMarker(el, lngLat, popupHTML, [0, -20]);
+            createGoongMarker(el, lngLat, popupHTML, [0, -20], dataObj);
             return;
           case "fail": // OLD STYLE (Fallback)
             // Marker dạng nhãn cảnh báo đặc biệt
@@ -3281,7 +3819,7 @@
                 <div class="pin-shadow" style="width:20px; bottom:-4px"></div>
             `;
             // Tạo marker và return ngay (không chạy logic default bên dưới)
-            createGoongMarker(el, lngLat, popupHTML, [0, -15]);
+            createGoongMarker(el, lngLat, popupHTML, [0, -15], dataObj);
             return;
         }
 
@@ -3299,22 +3837,65 @@
         `;
         }
 
-        createGoongMarker(el, lngLat, popupHTML, offset);
+        // If this event is marked as a violation (unavoidable), add 'violation' class for stronger styling
+        if (dataObj && dataObj.warning) {
+          const innerPin = el.querySelector('.pin-dot, .pin-drop, .pin-mini, .pin-mini-icon');
+          if (innerPin) innerPin.classList.add('violation');
+        }
+
+        createGoongMarker(el, lngLat, popupHTML, offset, dataObj);
       }
 
 // Hàm phụ trợ tạo marker để code gọn hơn
-function createGoongMarker(el, lngLat, popupHTML, offset) {
+function createGoongMarker(el, lngLat, popupHTML, offset, dataObj) {
     const marker = new goongjs.Marker({ element: el, offset: offset })
         .setLngLat(lngLat)
         .addTo(map);
 
     if (popupHTML) {
-        const popup = new goongjs.Popup({ offset: 25, closeButton: false, className: "google-popup" })
-            .setHTML(popupHTML);
-        el.addEventListener("mouseenter", () => marker.setPopup(popup).togglePopup());
-        el.addEventListener("mouseleave", () => marker.togglePopup());
+      // Generate a unique ID for JSON details (kept for future)
+      const detailsId = 'gm-json-' + Math.random().toString(36).slice(2, 9);
+      const jsonHtml = '';
+
+      const enhanced = `<div class="popup-main">${popupHTML}</div>${jsonHtml}`;
+      const popup = new goongjs.Popup({ offset: 25, closeButton: false, className: "google-popup" })
+        .setHTML(enhanced);
+
+      // Open popup on hover; keep it open when hovering over the popup itself
+      el.addEventListener("mouseenter", () => {
+        marker.setPopup(popup).togglePopup();
+        // Try to attach handlers to popup container so moving from marker to popup doesn't close it
+        setTimeout(function attach() {
+          const p = marker.getPopup();
+          const container = p && p._container;
+          if (container) {
+            // When mouse leaves popup area, close it
+            container.addEventListener('mouseleave', () => { try { p.remove(); } catch(e){} });
+            // Prevent closing when entering popup
+            container.addEventListener('mouseenter', () => {});
+          } else {
+            // Wait until popup DOM is ready
+            setTimeout(attach, 50);
+          }
+        }, 50);
+      });
+
+      el.addEventListener("mouseleave", () => {
+        // Close after small delay unless user moved into the popup
+        setTimeout(() => {
+          const p = marker.getPopup();
+          const container = p && p._container;
+          if (container && container.matches(':hover')) return; // keep open
+          try { marker.getPopup() && marker.togglePopup(); } catch(e) {}
+        }, 120);
+      });
+
+      // Support click to pin/open popup (toggle)
+      el.addEventListener("click", (e) => { marker.togglePopup(); e.stopPropagation(); });
     }
 }
+
+// Popup JSON details removed — helper functions deleted per UX request
       // === TOAST NOTIFICATION SYSTEM ===
       function createToastContainer() {
         let container = document.getElementById("toast-container");
@@ -3463,13 +4044,26 @@ function createGoongMarker(el, lngLat, popupHTML, offset) {
             }
           }
 
+          const warningClass = event.warning ? 'warning' : '';
+          const avoidedBadge = (event.hasOwnProperty('warning') && event.warning === false) ? `<span class="feedback-badge success">✅ Đã tránh</span>` : '';
+          const warningText = event.warning ? `<span class="warning-text">⚠️ Bắt buộc đi qua</span>` : '';
+
           html += `
-            <div class="travel-event">
+            <div class="travel-event ${warningClass}">
               <div class="event-marker ${event.type}" style="display:flex; align-items:center; justify-content:center;">
                   <span class="icon material-symbols-rounded" style="font-size: 14px;">${iconName}</span>
               </div>
               <div class="event-content">
-                 </div>
+                  <div class="event-header">
+                      <span class="event-name">${event.name}</span>
+                      <span class="event-cost ${costClass}">${costText}</span>
+                  </div>
+                  <div class="event-details">
+                      ${detailsHtml}
+                      ${avoidedBadge}
+                      ${warningText}
+                  </div>
+              </div>
             </div>
         `;
     });
@@ -3563,6 +4157,8 @@ function createGoongMarker(el, lngLat, popupHTML, offset) {
       function applySuggestion(suggestionText, index) {
         if (suggestionText.includes("100%") || suggestionText.includes("đầy")) {
           document.getElementById("battery").value = 100;
+          // Ensure km counter updates when we programmatically change battery
+          try { updateKmRemaining(); } catch (e) { /* ignore */ }
           showToast("success", "Đã cập nhật", "Pin đã được đặt về 100%");
           setTimeout(() => findRoute(), 1000);
         } else if (
@@ -3678,29 +4274,7 @@ function createGoongMarker(el, lngLat, popupHTML, offset) {
         });
       });
 
-      // === CALCULATE KM REMAINING ===
-      document
-        .getElementById("battery")
-        .addEventListener("input", updateKmRemaining);
-      document
-        .getElementById("consumption")
-        .addEventListener("input", updateKmRemaining);
-      document
-        .getElementById("capacity")
-        .addEventListener("input", updateKmRemaining);
-
-      function updateKmRemaining() {
-        const battery = parseFloat(document.getElementById("battery").value);
-        const consumption = parseFloat(
-          document.getElementById("consumption").value
-        );
-        const capacity = parseFloat(document.getElementById("capacity").value);
-
-        const kwhAvailable = (battery / 100) * capacity;
-        const kmRemaining = (kwhAvailable / consumption) * 100;
-
-        document.getElementById("km_remaining").value = Math.round(kmRemaining);
-      }
+      // === KM CALCULATION LOGIC MOVED TO TOP OF SCRIPT ===
 
       // === LOADING TIMER ===
       function updateLoadingTimer() {
@@ -4069,6 +4643,9 @@ function createGoongMarker(el, lngLat, popupHTML, offset) {
         if (selectedCard) {
           selectedCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
         }
+
+        // Re-render map to focus on selected route
+        try { renderSelectedRoute(index); } catch (e) { console.warn('renderSelectedRoute failed', e); }
       }
 
       // === TOGGLE DIRECTIONS (Show More/Less) ===
@@ -4111,6 +4688,7 @@ function createGoongMarker(el, lngLat, popupHTML, offset) {
       }
 
       // === FIND ROUTE ===
+      // Main entry point for search - validates input quality
       async function findRoute() {
         const start = document.getElementById("start").value.trim();
         const end = document.getElementById("end").value.trim();
@@ -4132,17 +4710,18 @@ function createGoongMarker(el, lngLat, popupHTML, offset) {
         if ((!isStartOk || !isEndOk) && !hasWarnedInput) {
           // Show modal for confirmation
           showWarningModal(() => {
-            performSearch();
+            hasWarnedInput = true; // Prevent infinite loop
+            performActualSearch();
           });
           return;
         }
 
-        // If quality OK or already warned, proceed
-        performSearch();
+        // If quality OK or already warned, proceed directly
+        performActualSearch();
       }
 
-      // === PERFORM SEARCH (Extracted from findRoute) ===
-      async function performSearch() {
+      // === PERFORM ACTUAL SEARCH (Core search logic) ===
+      async function performActualSearch() {
         const start = document.getElementById("start").value.trim();
         const end = document.getElementById("end").value.trim();
         const battery = parseFloat(document.getElementById("battery").value);
@@ -4812,6 +5391,11 @@ function createGoongMarker(el, lngLat, popupHTML, offset) {
                         </div>
                     </div>
                 </div>` : ''}
+                ${route.filter_feedback && route.filter_feedback.length ? `
+                <div class="summary-feedback" style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+                  ${route.filter_feedback.map(function(f){ return '<span class="feedback-badge ' + f.type + '">' + f.icon + ' ' + f.text + '</span>'; }).join('')}
+                </div>
+                ` : ''}
             </div>
           `;
 
@@ -4838,14 +5422,154 @@ function createGoongMarker(el, lngLat, popupHTML, offset) {
       document
         .getElementById("start")
         .addEventListener("keypress", function (e) {
-          if (e.key === "Enter") findRoute();
+          if (e.key === "Enter") validateAndSearch();
         });
       document.getElementById("end").addEventListener("keypress", function (e) {
-        if (e.key === "Enter") findRoute();
+        if (e.key === "Enter") validateAndSearch();
       });
+
+    
+
+      function renderCarSpecs() {
+        const tbody = document.getElementById('carSpecsList');
+        tbody.innerHTML = carDatabase.map(car => `
+            <tr class="spec-row">
+                <td><b>${car.brand}</b> ${car.model}</td>
+                <td>${car.capacity}</td>
+                <td>${car.consumption}</td>
+                <td style="text-align: right;">
+                    <button class="apply-btn" onclick="applyCarSpec(${car.capacity}, ${car.consumption})">Áp dụng</button>
+                </td>
+            </tr>
+        `).join('');
+      }
+
+      function applyCarSpec(capacity, consumption) {
+        document.getElementById('capacity').value = capacity;
+        document.getElementById('consumption').value = consumption;
+        // Tự động tính lại
+        updateKmRemaining();
+        closeCarSpecsModal();
+        showToast("success", "Đã cập nhật", `Đã áp dụng thông số: Pin ${capacity}kWh, Tiêu thụ ${consumption}kWh/100km`);
+      }
+
+      function openCarSpecsModal() {
+        renderCarSpecs();
+        document.getElementById('carSpecsModal').classList.add('show');
+      }
+
+      function closeCarSpecsModal() {
+        document.getElementById('carSpecsModal').classList.remove('show');
+      }
+
+      let pendingSearchAction = null;
+
+      function validateAndSearch() {
+        const consumptionEl = document.getElementById('consumption');
+        const capacityEl = document.getElementById('capacity');
+        
+        if (!consumptionEl || !capacityEl) {
+          console.error('Validation elements not found');
+          findRoute();
+          return;
+        }
+
+        const consumption = parseFloat(consumptionEl.value);
+        const capacity = parseFloat(capacityEl.value);
+
+        let warningMsg = "";
+        if (consumption > 35) {
+          warningMsg = `Mức tiêu thụ <b>${consumption} kWh/100km</b> là rất cao (xe tải hạng nặng). Xe con thường chỉ từ 13-25 kWh.`;
+        } else if (consumption < 10) {
+          warningMsg = `Mức tiêu thụ <b>${consumption} kWh/100km</b> là quá thấp (xe máy điện).`;
+        } else if (capacity > 200) {
+          warningMsg = `Dung lượng pin <b>${capacity} kWh</b> lớn hơn hầu hết các xe thương mại hiện nay.`;
+        } else if (capacity < 20) {
+          warningMsg = `Dung lượng pin <b>${capacity} kWh</b> có vẻ quá nhỏ cho xe ô tô điện.`;
+        }
+
+        if (warningMsg) {
+          const modalMsg = document.getElementById('specWarningMsg');
+          const modal = document.getElementById('specWarningModal');
+          
+          if (modalMsg && modal) {
+            modalMsg.innerHTML = warningMsg + "<br><br>Bạn có muốn kiểm tra lại bảng thông số chuẩn không?";
+            modal.classList.add('show');
+            pendingSearchAction = findRoute;
+            console.log('⚠️ Validation warning shown:', warningMsg);
+          } else {
+            console.error('Modal elements not found');
+            findRoute();
+          }
+        } else {
+          // OK -> perform search directly
+          findRoute();
+        }
+      }
+
+      function closeSpecWarningAndContinue() {
+        const modal = document.getElementById('specWarningModal');
+        if (modal) modal.classList.remove('show');
+        if (pendingSearchAction) {
+          pendingSearchAction();
+          pendingSearchAction = null;
+        }
+      }
+
+      function switchToCarSpecs() {
+        const modal = document.getElementById('specWarningModal');
+        if (modal) modal.classList.remove('show');
+        openCarSpecsModal();
+      }
 
       // === INITIALIZE ===
       updateKmRemaining();
     </script>
+
+    <!-- Car Specs Modal -->
+    <div id="carSpecsModal" class="modal-overlay" onclick="if (event.target===this) closeCarSpecsModal();">
+      <div class="modal-content" style="max-width: 720px; width: 95%;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <h3 class="modal-title" style="margin: 0;">Thông số xe điện phổ biến</h3>
+          <button class="chart-close" onclick="closeCarSpecsModal()">×</button>
+        </div>
+        <div style="overflow-x: auto;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 0.95rem; text-align: left;">
+            <thead>
+              <tr style="background: #f3f4f6; color: #374151;">
+                <th style="padding: 10px; border-bottom: 2px solid #e5e7eb;">Mẫu xe</th>
+                <th style="padding: 10px; border-bottom: 2px solid #e5e7eb;">Pin (kWh)</th>
+                <th style="padding: 10px; border-bottom: 2px solid #e5e7eb;">Tiêu thụ</th>
+                <th style="padding: 10px; border-bottom: 2px solid #e5e7eb;"></th>
+              </tr>
+            </thead>
+            <tbody id="carSpecsList"></tbody>
+          </table>
+        </div>
+        <p style="font-size: 0.8rem; color: #6b7280; margin-top: 12px; text-align: left;">* Số liệu tham khảo trung bình. Thực tế có thể thay đổi tùy điều kiện vận hành.</p>
+      </div>
+    </div>
+
+    <!-- Spec Warning Modal -->
+    <div id="specWarningModal" class="modal-overlay">
+      <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="specWarningTitle" style="max-width: 520px; width: 95%;">
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <div style="display:flex; align-items:center; gap:12px; justify-content:flex-start;">
+            <div class="modal-icon" aria-hidden="true" style="background:#fff7ed; color:#f97316; width:48px; height:48px;">
+              <span class="icon material-symbols-rounded" style="font-size:24px">warning</span>
+            </div>
+            <h3 id="specWarningTitle" class="modal-title" style="margin:0; text-align:left; flex:1;">Thông số có vẻ không hợp lý</h3>
+          </div>
+
+          <p class="modal-desc" id="specWarningMsg">Mức tiêu thụ bạn nhập có vẻ quá cao so với thực tế.</p>
+
+          <div class="modal-actions" style="margin-top:8px; justify-content:flex-end;">
+            <button class="modal-btn secondary" onclick="closeSpecWarningAndContinue()">Vẫn tiếp tục</button>
+            <button class="modal-btn primary" onclick="switchToCarSpecs()">Xem bảng thông số</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </body>
 </html>
