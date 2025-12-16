@@ -30,8 +30,11 @@ pip install -r requirements.txt
 ```bash
 python import_to_mongodb.py
 ```
-
-### 5. Chạy
+### 5. Cập nhật giá tiền
+```bash
+python update_data_pro.py
+```
+### 6. Chạy
 ```bash
 run.bat gõ 
 .\run.bat
