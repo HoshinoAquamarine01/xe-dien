@@ -18,15 +18,15 @@
 
 ### Frontend
 
-| Công nghệ                         | Mục đích                           |
-| --------------------------------- | --------------------------------- |
-| **HTML5/CSS3**                    | Giao diện người dùng           |
-| **JavaScript (ES6+)**             | Xử lý logic client-side        |
+| Công nghệ                         | Mục đích                              |
+| --------------------------------- | ------------------------------------- |
+| **HTML5/CSS3**                    | Giao diện người dùng                  |
+| **JavaScript (ES6+)**             | Xử lý logic client-side               |
 | **GoongJS API 1.0+**              | Bản đồ tương tác chính (Vector Tiles) |
-| **Leaflet.js** (fallback)         | Bản đồ dự phòng nếu GoongJS lỗi |
-| **Material Symbols**              | Icon hiện đại cho UI và marker  |
-| **Font Awesome 6.4.0**            | Icon bản đồ và UI            |
-| **Google Fonts (Inter, Poppins)** | Typography hiện đại        |
+| **Leaflet.js** (fallback)         | Bản đồ dự phòng nếu GoongJS lỗi       |
+| **Material Symbols**              | Icon hiện đại cho UI và marker        |
+| **Font Awesome 6.4.0**            | Icon bản đồ và UI                     |
+| **Google Fonts (Inter, Poppins)** | Typography hiện đại                   |
 
 ### Database
 
@@ -36,12 +36,12 @@
 
 ### API bên thứ 3
 
-| API                                      | Mục đích                               |
-| ---------------------------------------- | -------------------------------------- |
-| **Goong Maps API**                       | Routing chính cho Viủt Nam (directions, geocoding) |
+| API                                      | Mục đích                                               |
+| ---------------------------------------- | ------------------------------------------------------ |
+| **Goong Maps API**                       | Routing chính cho Viủt Nam (directions, geocoding)     |
 | **Mapbox Directions API** (fallback)     | Routing dự phòng khi Goong lỗi hoặc không hỗ trợ avoid |
-| **OSRM (OpenStreetMap Routing Machine)** | Tính toán đường đi thực tế giữa 2 điểm |
-| **Nominatim (OpenStreetMap)**            | Chuyển đổi địa chỉ thành tọa độ GPS    |
+| **OSRM (OpenStreetMap Routing Machine)** | Tính toán đường đi thực tế giữa 2 điểm                 |
+| **Nominatim (OpenStreetMap)**            | Chuyển đổi địa chỉ thành tọa độ GPS                    |
 
 ### Routing filters (Avoid)
 
@@ -51,24 +51,29 @@
 
 ### Thuật toán và Logic Tính toán
 
-#### 1. Thuật toán A* (A-Star) cho EV Routing
+#### 1. Thuật toán A\* (A-Star) cho EV Routing
 
 **Mục đích**: Tìm lộ trình tối ưu với các ràng buộc về pin và trạm sạc.
 
 **Công thức cost function**:
+
 ```
 f(n) = g(n) + h(n)
 ```
+
 Trong đó:
+
 - `g(n)`: Chi phí thực tế từ điểm đầu đến node n (thời gian + chi phí sạc)
 - `h(n)`: Ước lượng chi phí từ node n đến đích (khoảng cách Haversine)
 
 **Heuristic weight**: Hệ thống sử dụng hệ số 1.15x cho heuristic để tăng tốc độ hội tụ:
+
 ```
 f(n) = g(n) + 1.15 * h(n)
 ```
 
 **Constraints (Ràng buộc)**:
+
 - Mức pin tại mỗi node: `battery_level >= min_battery_threshold` (mặc định 10%)
 - Khoảng cách tới trạm sạc tiếp theo: `distance_to_next <= current_range`
 - Tổng số trạm sạc: Tối thiểu hóa để giảm thời gian
@@ -80,33 +85,39 @@ f(n) = g(n) + 1.15 * h(n)
 **Thuật toán**: KD-Tree (K-Dimensional Tree) từ scipy.spatial
 
 **Độ phức tạp**:
+
 - Xây dựng tree: O(n log n)
 - Truy vấn: O(log n)
 - Bộ nhớ: O(n)
 
 **Buffer zone (Vùng đệm)**:
+
 - `buffer_km = 25.0` km (tăng từ 12km cho tuyến dài)
 - Tìm tất cả trạm sạc trong vùng buffer dọc theo route
 
 #### 3. Tính Toán Pin và Quãng Đường
 
 **Công thức tiêu thụ pin**:
+
 ```python
 energy_consumed = (distance_km * consumption_kwh_per_100km) / 100
 battery_remaining = current_battery - energy_consumed
 ```
 
 **Quãng đường còn đi được**:
+
 ```python
 remaining_range_km = (battery_percent * battery_capacity_kwh) / consumption_kwh_per_100km * 100
 ```
 
 Ví dụ:
+
 - Pin: 80% x 60 kWh = 48 kWh
 - Tiêu thụ: 15 kWh/100km
-- Quãng đường: (48 / 15) * 100 = 320 km
+- Quãng đường: (48 / 15) \* 100 = 320 km
 
 **Tính toán thời gian và lượng sạc**:
+
 ```python
 # Sạc từ A% đến B%
 energy_needed = (target_percent - current_percent) * battery_capacity / 100
@@ -119,11 +130,13 @@ charging_cost = energy_needed * price_per_kwh
 #### 4. Tối Ưu hóa Routing cho Tuyến Dài
 
 **Adaptive Sampling** (Lấy mẫu thích nghi):
+
 - Tuyến ngắn (<500km): `sample_interval = 2 km`
 - Tuyến dài (≥500km): `sample_interval = 5 km`
 - Mục đích: Giảm số điểm kiểm tra, tăng tốc xử lý
 
 **Candidate Pruning** (Loại bỏ ứng viên không khả thi):
+
 ```python
 if battery_after_reaching_station < min_battery:
     continue  # Bỏ qua trạm này
@@ -132,6 +145,7 @@ if distance_to_station > current_range:
 ```
 
 **Multi-route optimization**: Hệ thống tạo tối đa 3 lộ trình thay thế với các ưu tiên khác nhau:
+
 1. **Lộ trình tối ưu**: Cân bằng thời gian và chi phí
 2. **Lộ trình nhanh nhất**: Ưu tiên thời gian, ít trạm sạc
 3. **Lộ trình rẻ nhất**: Ưu tiên chi phí, có thể lâu hơn
@@ -139,11 +153,13 @@ if distance_to_station > current_range:
 #### 5. Geocoding và Routing Fallback
 
 **Multi-provider strategy**:
+
 1. **Goong Geocoding** (우선): Đối với địa chỉ Việt Nam
 2. **Nominatim** (fallback): Khi Goong thất bại
 3. **Direct coordinates**: Nếu user nhập lat,lng
 
 **Routing provider priority**:
+
 ```
 1. Goong Directions API (Việt Nam)
    ↓ (nếu lỗi hoặc không hỗ trợ avoid)
@@ -162,58 +178,64 @@ if distance_to_station > current_range:
 ## 4.1.1 Tính năng Chính
 
 ### 1. Routing Đa dạng
+
 - **3 lộ trình thay thế**: Tối ưu, Nhanh nhất, Rẻ nhất
 - **Tự động chọn trạm sạc**: Dựa trên mức pin, quãng đường, công suất sạc
 - **Hiển thị thông tin chi tiết**: Thời gian sạc, chi phí, quãng đường từ điểm xuất phát
 
 ### 2. Tương tác Bản Đồ (GoongJS)
+
 - **Vector tiles**: Hiển thị bản đồ mượt mà, nhanh
 - **Marker tùy chỉnh**: Trạm sạc, phà, thu phí, trạm dừng nghỉ
 - **Popup thông tin**: Hiển thị chi tiết khi click vào marker
 - **Chế độ xem**: Standard, Satellite, Terrain
 
 ### 3. Bộ lọc Đường đi
+
 - **Tránh cao tốc**: Tìm tuyến qua quốc lộ
 - **Tránh thu phí**: Giảm chi phí tuyến đường
 - **Tránh phà**: Tối ưu cho xe không muốn chờ phà
 - **Cảnh báo thông minh**: Hiển thị khi không có tuyến thay thế
 
 ### 4. Quản lý Pin & Tiêu thụ
+
 - **Tính toán thời gian thực**: Dựa trên mức tiêu thụ thực tế
 - **Cảnh báo pin yếu**: Khi pin < 20% hoặc không đủ đến đích
 - **Gợi ý thông số xe**: Bảng tham khảo VinFast VF3, VF5, VF8, VF9
 - **Xác thực đầu vào**: Kiểm tra thông số không hợp lý
 
 ### 5. Hiểu năng & Tối ưu hóa
+
 - **Adaptive sampling**: Lấy mẫu 2-5km tùy quãng đường
 - **Candidate pruning**: Loại trạm sạc không khả thi sớm
-- **Heuristic weight 1.15x**: Tăng tốc A* mà vẫn tối ưu
+- **Heuristic weight 1.15x**: Tăng tốc A\* mà vẫn tối ưu
 - **Buffer zone 25km**: Tìm trạm sạc trong vùng rộng hơn
 
 ## 4.1.2 Kết quả Đo lường Hiệu năng
 
 ### Thời gian Xử lý (Test: HCM → Hà Nội, ~1700km)
 
-| Giai đoạn                 | Thời gian    | Ghi chú                          |
-| ------------------------- | ----------- | --------------------------------- |
-| Geocoding (2 điểm)        | 0.5-1.2s    | Goong API (Việt Nam)           |
-| Routing (Base)            | 1.5-2.8s    | Lấy geometry từ Goong         |
-| KD-Tree Build             | 0.1s        | Index 200+ trạm sạc             |
-| Trạm sạc trong buffer      | 0.3s        | Query trong 25km buffer           |
-| A\* Routing (optimized)    | 3.5-6.2s    | Với adaptive sampling + pruning |
-| **Tổng thời gian**            | **6-10s**   | Cho tuyến 1700km                |
+| Giai đoạn               | Thời gian | Ghi chú                         |
+| ----------------------- | --------- | ------------------------------- |
+| Geocoding (2 điểm)      | 0.5-1.2s  | Goong API (Việt Nam)            |
+| Routing (Base)          | 1.5-2.8s  | Lấy geometry từ Goong           |
+| KD-Tree Build           | 0.1s      | Index 200+ trạm sạc             |
+| Trạm sạc trong buffer   | 0.3s      | Query trong 25km buffer         |
+| A\* Routing (optimized) | 3.5-6.2s  | Với adaptive sampling + pruning |
+| **Tổng thời gian**      | **6-10s** | Cho tuyến 1700km                |
 
 ### So sánh Hiệu quả Tối ưu hóa
 
-| Tính năng                 | Trước    | Sau       | Cải thiện |
-| ------------------------ | --------- | --------- | --------- |
-| Buffer zone              | 12 km     | 25 km     | +108%     |
-| Sample interval (>500km) | 2 km      | 5 km      | +150%     |
-| Heuristic weight         | 1.0x      | 1.15x     | +15%      |
-| Avg routing time (HCM-HN) | 15-25s    | 6-10s     | -60%      |
-| Success rate (long route) | 75%       | 95%       | +20%      |
+| Tính năng                 | Trước  | Sau   | Cải thiện |
+| ------------------------- | ------ | ----- | --------- |
+| Buffer zone               | 12 km  | 25 km | +108%     |
+| Sample interval (>500km)  | 2 km   | 5 km  | +150%     |
+| Heuristic weight          | 1.0x   | 1.15x | +15%      |
+| Avg routing time (HCM-HN) | 15-25s | 6-10s | -60%      |
+| Success rate (long route) | 75%    | 95%   | +20%      |
 
 ### Độ Chính xác
+
 - **Pin remaining**: ±3% so với thực tế (test với VinFast VF8)
 - **Thời gian sạc**: ±5 phút (150kW DC fast charging)
 - **Quãng đường**: ±2% (đối chiếu với Google Maps)
