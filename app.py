@@ -27,6 +27,15 @@ from scipy.spatial import cKDTree
 from folium.plugins import MarkerCluster
 # -----------------------
 
+# Biến lưu trạng thái log hiện tại để gửi xuống Client
+CURRENT_PROCESSING_LOG = "Đang khởi tạo..."
+
+def log_status(message):
+    """Hàm helper: Vừa in ra terminal, vừa lưu log để Client đọc"""
+    global CURRENT_PROCESSING_LOG
+    CURRENT_PROCESSING_LOG = message
+    print(f"👉 [SERVER LOG]: {message}") # In ra terminal như cũ
+
 # ==============================================================================
 #  CACHING CHO OSRM REQUESTS
 # ==============================================================================
@@ -156,15 +165,38 @@ class EVState:
 #  CÁC HÀM XỬ LÝ CHỈ DẪN (TURN-BY-TURN) - ĐÃ THÊM VÀO ĐÂY
 # ==============================================================================
 def get_icon_for_maneuver(m_type, modifier):
-    """Trả về icon FontAwesome tương ứng hành động"""
-    if m_type == "arrive": return "fa-flag-checkered"
-    if m_type == "depart": return "fa-play-circle"
-    if modifier and "left" in str(modifier): return "fa-arrow-left"
-    if modifier and "right" in str(modifier): return "fa-arrow-right"
-    if m_type == "continue" or (modifier and "straight" in modifier): return "fa-arrow-up"
-    if m_type == "uturn": return "fa-undo"
-    if "roundabout" in str(m_type): return "fa-sync"
-    return "fa-location-arrow"
+    """Trả về icon Google Material Symbols tương ứng hành động"""
+    m_type = str(m_type).lower()
+    modifier = str(modifier).lower() if modifier else ""
+    
+    if m_type == "arrive": return "flag"
+    if m_type == "depart": return "trip_origin"
+    
+    if "rotary" in m_type or "roundabout" in m_type:
+        return "roundabout_right" if "right" in modifier else "roundabout_left"
+        
+    if "uturn" in m_type or "uturn" in modifier:
+        return "u_turn_right" if "right" in modifier else "u_turn_left"
+        
+    if "left" in modifier: 
+        if "sharp" in modifier: return "turn_sharp_left"
+        if "slight" in modifier: return "turn_slight_left"
+        return "turn_left"
+        
+    if "right" in modifier:
+        if "sharp" in modifier: return "turn_sharp_right"
+        if "slight" in modifier: return "turn_slight_right"
+        return "turn_right"
+        
+    if m_type == "continue" or "straight" in modifier: 
+        return "straight"
+        
+    if m_type == "merge": return "merge"
+    if m_type == "fork": return "alt_route"
+    if m_type == "off ramp": return "ramp_right"
+    if m_type == "on ramp": return "ramp_right"
+    
+    return "navigation"
 
 def format_turn_by_turn(steps):
     """
@@ -2455,7 +2487,13 @@ def create_route_detail_chart(route_data):
 
 @app.route('/favicon.ico')
 def favicon():
-    return send_from_directory('static', 'avt.ico', mimetype='image/x-icon')
+    return send_from_directory('static', 'fav-icon-gg-map.svg', mimetype='image/svg+xml')
+
+@app.route('/api/status-log')
+def get_status_log():
+    """API để frontend polling trạng thái hiện tại"""
+    global CURRENT_PROCESSING_LOG
+    return jsonify({"message": CURRENT_PROCESSING_LOG})
 
 @app.route('/')
 def index():
@@ -2477,7 +2515,7 @@ def find_route():
         
         # GEOCODING
         geocode_start = time.time()
-        print(f"🔄 Đang geocode '{start_addr}'...")
+        log_status(f"Đang định vị địa chỉ: '{start_addr}'...")
         start_loc = geolocator.geocode(start_addr + ", Việt Nam", timeout=15)
         
         if not start_loc:
@@ -2494,7 +2532,7 @@ def find_route():
                 ]
             }), 400
         
-        print(f"🔄 Đang geocode '{end_addr}'...")
+        log_status(f"Đang định vị địa chỉ: '{end_addr}'...")
         end_loc = geolocator.geocode(end_addr + ", Việt Nam", timeout=15)
         
         if not end_loc:
@@ -2559,7 +2597,7 @@ def find_route():
         
         # GET ROUTE
         route_start = time.time()
-        print(f"Đang lấy route từ Goong API...")
+        log_status("Đang tìm đường đi tối ưu (Goong API)...")
         base_routes, route_error = get_route(start_coords, end_coords, data)
         print(f"Routing API: {time.time() - route_start:.1f}s")
         
@@ -2608,7 +2646,7 @@ def find_route():
                 route_coords = polyline.decode(base_route['geometry'])
                 route_distance_km = base_route['distance'] / 1000
                 
-                print(f"\n📍 Đang xử lý route {idx+1}:")
+                log_status(f"Đang phân tích và tìm trạm sạc cho lộ trình {idx+1}...")
                 print(f"   - Quãng đường: {route_distance_km:.1f}km")
                 print(f"   - Số điểm: {len(route_coords)}")
                 
@@ -2706,34 +2744,9 @@ def find_route():
                 print(f"   📊 Trả về infeasibility error chi tiết cho Frontend")
                 
                 # === TẠO MAP HTML CHO INFEASIBLE ROUTE ===
-                try:
-                    # Decode polyline để lấy tọa độ
-                    traveled_coords = polyline.decode(last_infeasibility_error.get('traveled_geometry', '')) if last_infeasibility_error.get('traveled_geometry') else []
-                    remaining_coords = polyline.decode(last_infeasibility_error.get('remaining_geometry', '')) if last_infeasibility_error.get('remaining_geometry') else []
-                    
-                    # Lấy failure point
-                    fail_pt = None
-                    if last_infeasibility_error.get('failure_point'):
-                        fp = last_infeasibility_error['failure_point']
-                        fail_pt = (fp['lat'], fp['lon'])
-                    
-                    # Tạo map HTML
-                    error_map_html = create_infeasible_map(
-                        start_coords, 
-                        end_coords, 
-                        traveled_coords, 
-                        remaining_coords, 
-                        fail_pt,
-                        last_infeasibility_error.get('nearest_station_to_failure')
-                    )
-                    
-                    # Gán map vào response
-                    last_infeasibility_error['map_html'] = error_map_html
-                    print(f"   ✅ Đã tạo infeasibility map HTML")
-                    
-                except Exception as e:
-                    print(f"   ⚠️ Lỗi khi vẽ map infeasible: {e}")
-                    last_infeasibility_error['map_html'] = None
+                # (Đã chuyển sang Client-Side Rendering với GoongJS)
+                last_infeasibility_error['map_html'] = None 
+
                 
                 return jsonify({
                     "infeasibility": last_infeasibility_error
@@ -2825,120 +2838,22 @@ def find_route():
         
         print(f"⏱️ Tìm trạm gần đường: {time.time() - nearby_start:.1f}s")
         
-        # TẠO BẢN ĐỒ
-        map_start = time.time()
-        center_lat = (start_coords[0] + end_coords[0]) / 2
-        center_lon = (start_coords[1] + end_coords[1]) / 2
-        m = create_map(center=[center_lat, center_lon], zoom=8)
+        # CHUẨN BỊ DỮ LIỆU JSON (Client-Side Rendering)
+        json_start = time.time()
         
-        add_stations_to_map(
-            m,
-            nearby_charging_stations=nearby_charging_stations,
-            nearby_ferries=nearby_ferries if avoid_ferries else None,
-            nearby_highway_stations=nearby_highway_stations if not avoid_highways else None,
-            nearby_toll_stations=nearby_toll_stations if avoid_tolls else None
-        )
+        # Chuẩn bị dữ liệu Nearby Features
+        nearby_data = {
+            "charging": [{'lat': s['station']['lat'], 'lon': s['station']['lon'], 'name': s['station']['name'], 'type': s['station'].get('type'), 'power': s['station'].get('power')} for s in nearby_charging_stations],
+            "ferries": [{'lat': f['ferry']['lat'], 'lon': f['ferry']['lon'], 'name': f['ferry']['name']} for f in nearby_ferries] if nearby_ferries else [],
+            "tolls": [{'lat': t['station']['lat'], 'lon': t['station']['lon'], 'name': t['station']['name']} for t in nearby_toll_stations] if nearby_toll_stations else []
+        }
         
-        for r in reversed(routes_data):
-            # Lấy travel_events từ metrics (đã tính toán trong a_star_ev_routing)
-            route_travel_events = r['metrics'].get('travel_events', [])
-            add_route_to_map(
-                m, 
-                r['coords'], 
-                r['stops'], 
-                travel_events=route_travel_events,  # Truyền travel_events để vẽ lên bản đồ
-                color=r['color'], 
-                label=r['name']
-            )
-        
-        # LEGEND TO HƠN VÀ RÕ RÀNG HƠN
-        legend_html = '''
-        <div style="position: fixed; bottom: 20px; right: 20px; 
-                    background: white; padding: 18px 22px; border-radius: 12px;
-                    box-shadow: 0 6px 20px rgba(0,0,0,0.35); z-index: 9999;
-                    font-size: 13px; width: 340px; border: 3px solid #2e7d32;
-                    font-family: 'Inter', Arial, sans-serif;">
-            <b style="font-size: 16px; color: #1b5e20; display: block; margin-bottom: 10px; 
-                      text-align: center; border-bottom: 3px solid #2e7d32; padding-bottom: 8px;">
-                🗺️ Chú thích bản đồ
-            </b>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; line-height: 2;">
-                <div style="font-size: 12px;">
-                    <i class="fa fa-play" style="color: green; width: 18px; font-size: 12px;"></i> 
-                    <span style="font-weight: 600;">Xuất phát</span>
-                </div>
-                <div style="font-size: 12px;">
-                    <i class="fa fa-flag-checkered" style="color: red; width: 18px; font-size: 12px;"></i> 
-                    <span style="font-weight: 600;">Đích</span>
-                </div>
-                
-                <div style="font-size: 12px;">
-                    <div style="height: 3px; width: 30px; background: #3b82f6; display: inline-block; vertical-align: middle;"></div> 
-                    <span style="font-weight: 600;">Tối ưu</span>
-                </div>
-                <div style="font-size: 12px;">
-                    <div style="height: 3px; width: 30px; background: #94a3b8; display: inline-block; vertical-align: middle;"></div> 
-                    <span style="font-weight: 600;">Thay thế</span>
-                </div>
-                
-                <div style="font-size: 12px;">
-                    <i class="fa fa-bolt" style="color: orange; width: 18px; font-size: 12px;"></i> 
-                    <span style="font-weight: 600;">Đã chọn sạc</span>
-                </div>
-                <div style="font-size: 12px;">
-                    <i class="fa fa-bolt" style="color: green; width: 18px; font-size: 12px;"></i> 
-                    <span style="font-weight: 600;">AC</span>
-                </div>
-                
-                <div style="font-size: 12px;">
-                    <i class="fa fa-bolt" style="color: red; width: 18px; font-size: 12px;"></i> 
-                    <span style="font-weight: 600;">DC</span>
-                </div>
-                <div style="font-size: 12px;">
-                    <i class="fa fa-ship" style="color: blue; width: 18px; font-size: 12px;"></i> 
-                    <span style="font-weight: 600;">Phà</span>
-                </div>
-                
-                <div style="font-size: 12px;">
-                    <i class="fa fa-gas-pump" style="color: orange; width: 18px; font-size: 12px;"></i> 
-                    <span style="font-weight: 600;">Cao tốc</span>
-                </div>
-                <div style="font-size: 12px;">
-                    <i class="fa fa-money-bill" style="color: red; width: 18px; font-size: 12px;"></i> 
-                    <span style="font-weight: 600;">Thu phí</span>
-                </div>
-            </div>
-        </div>
-        '''
-        m.get_root().html.add_child(folium.Element(legend_html))
-        
-        # FIT BOUNDS TỐT HƠN - Lấy tất cả các điểm quan trọng
-        all_coords = []
-        
-        # Thêm điểm xuất phát và đích
-        all_coords.append(start_coords)
-        all_coords.append(end_coords)
-        
-        # Thêm tất cả điểm của routes (lấy mẫu để tránh quá nhiều điểm)
-        for r in routes_data:
-            all_coords.extend(r['coords'][::20])  # Lấy mỗi 20 điểm
-        
-        # Thêm các trạm sạc được chọn
-        for r in routes_data:
-            if r.get('is_best', False):  # Chỉ lấy route tốt nhất
-                for stop in r['stops']:
-                    all_coords.append([stop['station']['lat'], stop['station']['lon']])
-        
-        if all_coords:
-            # Fit bounds với padding lớn hơn để không bị sát mép
-            m.fit_bounds(all_coords, padding=[50, 50])
-        
-        print(f"⏱️ Tạo bản đồ: {time.time() - map_start:.1f}s")
+        print(f"⏱️ Chuẩn bị dữ liệu: {time.time() - json_start:.1f}s")
         print(f"\n✅ TỔNG THỜI GIAN: {time.time() - total_start:.1f}s")
         print(f"{'='*60}\n")
         
         return jsonify({
-            "map": m._repr_html_(),
+            "status": "success",
             "routes": [{
                 'name': r['name'], 
                 'metrics': r['metrics'], 
@@ -2948,8 +2863,14 @@ def find_route():
                 'instructions': r['instructions'],
                 'segments': r.get('segments', []),
                 'travel_events': r['metrics'].get('travel_events', []),
-                'filter_feedback': r.get('filter_feedback', [])  # Phản hồi hiệu quả bộ lọc
-            } for r in routes_data]
+                'color': r['color'],
+                'filter_feedback': r.get('filter_feedback', []),
+                
+                # QUAN TRỌNG: Gửi tọa độ thô xuống để JS vẽ
+                'geometry_coords': r['coords'] 
+            } for r in routes_data],
+            
+            "nearby_features": nearby_data
         })
         
     except Exception as e:

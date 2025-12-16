@@ -6,8 +6,8 @@
     <title>EV Router - Hệ thống tối ưu lộ trình xe điện</title>
     <link
       rel="icon"
-      type="image/x-icon"
-      href="{{ url_for('static', filename='avt.ico') }}"
+      type="image/svg+xml"
+      href="{{ url_for('static', filename='fav-icon-gg-map.svg') }}"
     />
 
     <style>
@@ -19,6 +19,15 @@
         box-sizing: border-box;
       }
 
+      /* CSS cho Popup và Marker của Goong */
+      .goong-popup-content {
+        padding: 10px;
+        font-family: "Inter", sans-serif;
+      }
+      .goong-custom-marker {
+        cursor: pointer;
+      }
+
       :root {
         --primary: #10b981;
         --primary-dark: #059669;
@@ -28,7 +37,7 @@
         --alert: #ef4444;
         --warning: #f59e0b;
         --risk: #f94f16;
-        --danger: #3A2152;
+        --danger: #3a2152;
         --dark: #111827;
         --gray-900: #1f2937;
         --gray-700: #374151;
@@ -41,6 +50,12 @@
         --gray-50: #f9fafb;
         --white: #ffffff;
         --sidebar-width: 420px;
+
+        /* Google Material Design 3 Tokens */
+        --google-blue-600: #1A73E8;
+        --google-grey-500: #9AA0A6;
+        --google-red-500: #EA4335;
+        --google-green-500: #34A853;
       }
 
       html,
@@ -705,107 +720,244 @@
         font-size: 0.9rem;
       }
 
-      /* ===== ROUTE CARDS ===== */
+      /* ===== ROUTE CARDS (MATERIAL 3 - PROGRESSIVE DISCLOSURE) ===== */
       .route-card {
         background: var(--white);
-        border: 1px solid var(--gray-200);
-        border-radius: 12px;
+        border-radius: 16px; /* Material 3 Rounded Corners */
         margin-bottom: 16px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        border: 1px solid transparent;
         overflow: hidden;
-        transition: all 0.2s ease;
         cursor: pointer;
       }
 
       .route-card:hover {
-        border-color: var(--primary);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+        border-color: rgba(0, 0, 0, 0.05);
       }
 
       .route-card.active {
-        border-color: var(--primary);
-        box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+        border: 2px solid var(--google-blue-600); /* Google Blue selection */
+        background: #f8fbff; /* Very light blue tint */
       }
 
-      .route-card.best {
-        border-color: var(--primary);
-        background: linear-gradient(
-          135deg,
-          rgba(16, 185, 129, 0.03),
-          rgba(16, 185, 129, 0.08)
-        );
+      /* --- Summary View (Collapsed) --- */
+      .card-summary {
+        padding: 16px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
       }
 
-      /* --- Card Header --- */
-      .card-header {
+      .summary-header {
         display: flex;
         justify-content: space-between;
-        align-items: center;
-        padding: 16px;
-        border-bottom: 1px solid var(--gray-100);
+        align-items: flex-start;
       }
 
-      .route-name {
-        font-size: 1rem;
+      .route-time-big {
+        font-family: 'Google Sans', sans-serif;
+        font-size: 1.5rem;
         font-weight: 700;
-        color: var(--dark);
+        color: #1f1f1f; /* Google Dark Grey */
+        letter-spacing: -0.5px;
+        line-height: 1.2;
       }
 
-      .badge {
-        padding: 4px 10px;
-        background: #d1fae5;
-        color: #065f46;
-        font-size: 0.7rem;
+      .route-time-big span {
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: #5f6368;
+        margin-left: 4px;
+      }
+
+      .best-badge {
+        background-color: #e6f4ea; /* Green 50 */
+        color: #137333; /* Green 700 */
+        padding: 6px 12px;
+        border-radius: 100px;
+        font-size: 0.75rem;
         font-weight: 700;
-        border-radius: 20px;
         text-transform: uppercase;
         letter-spacing: 0.5px;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
       }
 
-      /* --- Stats Grid --- */
-      .stats-grid {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 1px;
-        background: var(--gray-100);
-        border-bottom: 1px solid var(--gray-100);
+      .summary-metrics {
+        display: flex;
+        gap: 16px;
+        font-size: 0.9rem;
+        color: #5f6368;
+        align-items: center;
       }
 
-      .stat-item {
-        background: var(--white);
-        padding: 12px 8px;
-        text-align: center;
+      .metric-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
       }
 
-      .stat-label {
-        font-size: 0.65rem;
-        color: var(--gray-500);
-        text-transform: uppercase;
-        letter-spacing: 0.3px;
+      .metric-dot {
+        width: 4px;
+        height: 4px;
+        background: #dadce0;
+        border-radius: 50%;
+      }
+
+      /* --- Integrated Timeline (Detail View) --- */
+      .route-details-container {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        background: #ffffff;
+      }
+
+      .route-details-container.open {
+        max-height: 800px; /* Adjust based on content */
+        overflow-y: auto;
+        border-top: 1px solid #f1f3f4;
+      }
+
+      .integrated-timeline {
+        padding: 20px 24px;
+        position: relative;
+      }
+
+      /* Connector Line */
+      .integrated-timeline::before {
+        content: '';
+        position: absolute;
+        top: 24px;
+        bottom: 24px;
+        left: 33px; /* Align with icon center (24px padding + 9px approx) */
+        width: 2px;
+        background: #e0e0e0;
+        z-index: 0;
+      }
+
+      .timeline-node {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 24px;
+        position: relative;
+        z-index: 1;
+      }
+
+      .timeline-node:last-child {
+        margin-bottom: 0;
+      }
+
+      .node-icon-container {
+        width: 20px;
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background: white; /* Mask the line behind */
+        padding: 4px 0;
+      }
+
+      .node-icon {
+        color: #5f6368;
+        font-size: 20px;
+      }
+
+      .node-content {
+        flex: 1;
+        padding-top: 2px;
+      }
+
+      /* Event Types Styling */
+      .timeline-node.instruction .node-icon { color: #70757a; font-size: 14px; margin-top: 4px;}
+      
+      .timeline-node.event-charging .node-icon { color: #ea4335; } /* Google Red for Critical Action */
+      .timeline-node.event-toll .node-icon { color: #fbbc04; } /* Google Yellow */
+      .timeline-node.event-ferry .node-icon { color: #4285f4; } /* Google Blue */
+
+      /* Event Card (Embedded) */
+      .event-card {
+        background: #f8f9fa;
+        border: 1px solid #f1f3f4;
+        border-radius: 12px;
+        padding: 12px 16px;
+        margin-top: 4px;
+      }
+
+      .event-title {
+        font-weight: 600;
+        font-size: 0.9rem;
+        color: #202124;
         margin-bottom: 4px;
       }
 
-      .stat-value {
-        font-size: 0.95rem;
-        font-weight: 700;
-        color: var(--primary-dark);
-      }
-
-      /* --- Cost Summary --- */
-      .cost-summary {
-        padding: 12px 16px;
-        background: #fffbeb;
-        border-bottom: 1px solid #fde68a;
-      }
-
-      /* --- Filter Feedback Badges --- */
-      .filter-feedback-container {
+      .event-meta {
+        font-size: 0.8rem;
+        color: #5f6368;
         display: flex;
-        flex-direction: column;
-        gap: 6px;
-        padding: 10px 16px;
-        background: var(--gray-50);
-        border-bottom: 1px solid var(--gray-100);
+        flex-wrap: wrap;
+        gap: 12px;
       }
+
+      .event-cost {
+        color: #188038; /* Green for money */
+        font-weight: 600;
+      }
+
+      /* Turn Instruction Text */
+      .instruction-text {
+        font-size: 0.9rem;
+        color: #3c4043;
+        line-height: 1.5;
+      }
+      
+      .instruction-dist {
+        font-size: 0.75rem;
+        color: #70757a;
+        margin-top: 2px;
+      }
+
+      /* Expand/Collapse Button */
+      .details-toggle {
+        width: 100%;
+        padding: 12px;
+        background: transparent;
+        border: none;
+        border-top: 1px solid #f1f3f4;
+        color: #1a73e8;
+        font-weight: 600;
+        font-size: 0.85rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        transition: background 0.2s;
+      }
+
+      .details-toggle:hover {
+        background: #f8fbff;
+      }
+
+      /* === MARKER IMPROVEMENTS === */
+      /* Legacy styles removed to fix Flying Marker Bug */
+
+
+      /* Grounding Shadow */
+      .ground-shadow {
+        width: 24px;
+        height: 6px;
+        background: radial-gradient(ellipse at center, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0) 70%);
+        position: absolute;
+        bottom: -2px; /* Adjust based on anchor */
+        left: 50%;
+        transform: translateX(-50%);
+        border-radius: 50%;
+        pointer-events: none;
+      }
+
 
       .filter-badge {
         display: flex;
@@ -840,528 +992,8 @@
         flex-shrink: 0;
       }
 
-      .cost-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        font-size: 0.85rem;
-        margin-bottom: 6px;
-      }
+      /* (Legacy styles removed for Material 3 Design) */
 
-      .cost-row:last-child {
-        margin-bottom: 0;
-        padding-top: 8px;
-        border-top: 1px solid #fde68a;
-        font-weight: 700;
-      }
-
-      .cost-label {
-        color: var(--gray-600);
-      }
-
-      .cost-value {
-        font-weight: 600;
-        color: var(--gray-700);
-      }
-
-      .cost-value.total {
-        color: var(--warning);
-        font-size: 1rem;
-      }
-
-      /* --- Card Tabs --- */
-      .card-tabs {
-        display: flex;
-        border-bottom: 1px solid var(--gray-200);
-        background: var(--gray-50);
-      }
-
-      .card-tab {
-        flex: 1;
-        padding: 10px 12px;
-        font-size: 0.8rem;
-        font-weight: 600;
-        color: var(--gray-500);
-        text-align: center;
-        cursor: pointer;
-        border-bottom: 2px solid transparent;
-        transition: all 0.2s ease;
-        background: none;
-        border-top: none;
-        border-left: none;
-        border-right: none;
-        font-family: inherit;
-      }
-
-      .card-tab:hover {
-        color: var(--gray-700);
-        background: var(--gray-100);
-      }
-
-      .card-tab.active {
-        color: var(--primary);
-        border-bottom-color: var(--primary);
-        background: var(--white);
-      }
-
-      /* --- Tab Content --- */
-      .tab-content {
-        display: none;
-        padding: 16px;
-        max-height: 300px;
-        overflow-y: auto;
-      }
-
-      .tab-content.active {
-        display: block;
-      }
-
-      .tab-content::-webkit-scrollbar {
-        width: 4px;
-      }
-
-      .tab-content::-webkit-scrollbar-thumb {
-        background: var(--gray-300);
-        border-radius: 2px;
-      }
-
-      /* --- Overview Tab --- */
-      .overview-item {
-        display: flex;
-        justify-content: space-between;
-        padding: 10px 0;
-        border-bottom: 1px solid var(--gray-100);
-        font-size: 0.85rem;
-      }
-
-      .overview-item:last-child {
-        border-bottom: none;
-      }
-
-      .overview-label {
-        color: var(--gray-600);
-      }
-
-      .overview-value {
-        font-weight: 600;
-        color: var(--dark);
-      }
-
-      .reason-box {
-        margin-top: 12px;
-        padding: 12px;
-        background: rgba(16, 185, 129, 0.08);
-        border-left: 3px solid var(--primary);
-        border-radius: 0 6px 6px 0;
-      }
-
-      .reason-title {
-        font-size: 0.8rem;
-        font-weight: 700;
-        color: var(--primary-dark);
-        margin-bottom: 6px;
-      }
-
-      .reason-list {
-        font-size: 0.8rem;
-        color: var(--primary-dark);
-        line-height: 1.6;
-      }
-
-      /* --- Charging Tab --- */
-      .charging-timeline {
-        position: relative;
-      }
-
-      .charging-item {
-        display: flex;
-        gap: 12px;
-        padding: 12px 0;
-        border-bottom: 1px solid var(--gray-100);
-        position: relative;
-      }
-
-      .charging-item:last-child {
-        border-bottom: none;
-      }
-
-      .charging-marker {
-        width: 32px;
-        height: 32px;
-        background: var(--warning);
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: var(--white);
-        font-weight: 700;
-        font-size: 0.8rem;
-        flex-shrink: 0;
-      }
-
-      .charging-info {
-        flex: 1;
-      }
-
-      .charging-name {
-        font-weight: 600;
-        color: var(--dark);
-        font-size: 0.9rem;
-        margin-bottom: 4px;
-      }
-
-      .charging-details {
-        font-size: 0.8rem;
-        color: var(--gray-500);
-        display: flex;
-        gap: 12px;
-        flex-wrap: wrap;
-      }
-
-      .charging-cost {
-        font-weight: 600;
-        color: var(--primary-dark);
-      }
-
-      .no-charging {
-        text-align: center;
-        padding: 20px;
-        color: var(--primary);
-        font-weight: 600;
-        background: rgba(16, 185, 129, 0.08);
-        border-radius: 8px;
-      }
-
-      /* --- Travel Events Timeline --- */
-      .travel-events-timeline {
-        position: relative;
-        padding-left: 24px;
-      }
-
-      .travel-events-timeline::before {
-        content: "";
-        position: absolute;
-        left: 10px;
-        top: 0;
-        bottom: 0;
-        width: 2px;
-        background: linear-gradient(
-          to bottom,
-          var(--primary),
-          var(--warning),
-          var(--secondary)
-        );
-      }
-
-      .travel-event {
-        position: relative;
-        padding: 12px 0 12px 20px;
-        border-bottom: 1px solid var(--gray-100);
-      }
-
-      .travel-event:last-child {
-        border-bottom: none;
-      }
-
-      .event-marker {
-        position: absolute;
-        left: -20px;
-        top: 14px;
-        width: 24px;
-        height: 24px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 12px;
-        z-index: 1;
-        border: 2px solid var(--white);
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-      }
-
-      .event-marker.toll {
-        background: linear-gradient(135deg, #fef3c7, #fcd34d);
-        color: #1f2937;
-        border: 3px solid #dc2626;
-        width: 28px;
-        height: 28px;
-        font-size: 14px;
-        font-weight: bold;
-        box-shadow: 0 2px 6px rgba(220, 38, 38, 0.3),
-          inset 0 1px 0 rgba(255, 255, 255, 0.5);
-      }
-
-      .event-marker.ferry {
-        background: #3b82f6;
-        color: var(--white);
-      }
-
-      .event-marker.charging {
-        background: #f59e0b;
-        color: var(--white);
-      }
-
-      .event-marker.highway_stop {
-        background: #10b981;
-        color: var(--white);
-      }
-
-      .event-content {
-        background: var(--gray-50);
-        border-radius: 8px;
-        padding: 10px 12px;
-        transition: all 0.2s ease;
-      }
-
-      .travel-event:hover .event-content {
-        background: var(--gray-100);
-      }
-
-      .event-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        margin-bottom: 4px;
-      }
-
-      .event-name {
-        font-weight: 600;
-        font-size: 0.85rem;
-        color: var(--dark);
-      }
-
-      .event-cost {
-        font-weight: 700;
-        font-size: 0.85rem;
-        color: var(--alert);
-        white-space: nowrap;
-        margin-left: 8px;
-      }
-
-      .event-cost.free {
-        color: var(--primary);
-      }
-
-      .event-meta {
-        display: flex;
-        gap: 12px;
-        font-size: 0.75rem;
-        color: var(--gray-500);
-        flex-wrap: wrap;
-      }
-
-      .event-km {
-        font-weight: 600;
-        color: var(--primary-dark);
-      }
-
-      .event-detail {
-        color: var(--gray-600);
-      }
-
-      .no-events {
-        text-align: center;
-        padding: 20px;
-        color: var(--primary);
-        font-weight: 600;
-        background: rgba(16, 185, 129, 0.08);
-        border-radius: 8px;
-      }
-
-      .free-route-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        background: #d1fae5;
-        color: #065f46;
-        padding: 8px 16px;
-        border-radius: 20px;
-        font-size: 0.85rem;
-        font-weight: 600;
-        margin: 8px 0;
-      }
-
-      /* --- Infeasibility Error Card --- */
-      .infeasibility-card {
-        background: linear-gradient(135deg, #fef2f2, #fee2e2);
-        border: 1px solid #fecaca;
-        border-radius: 12px;
-        padding: 20px;
-        margin-bottom: 16px;
-      }
-
-      .infeasibility-header {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin-bottom: 16px;
-      }
-
-      .infeasibility-icon {
-        width: 48px;
-        height: 48px;
-        background: linear-gradient(135deg, #ef4444, #dc2626);
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 24px;
-        flex-shrink: 0;
-      }
-
-      .infeasibility-title {
-        font-size: 1.1rem;
-        font-weight: 700;
-        color: #991b1b;
-        margin-bottom: 4px;
-      }
-
-      .infeasibility-subtitle {
-        font-size: 0.85rem;
-        color: #7f1d1d;
-      }
-
-      .infeasibility-location {
-        background: #fee2e2;
-        border-radius: 8px;
-        padding: 12px;
-        margin-bottom: 12px;
-      }
-
-      .location-title {
-        font-size: 0.75rem;
-        font-weight: 600;
-        color: #991b1b;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-bottom: 8px;
-      }
-
-      .location-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
-      }
-
-      .location-item {
-        display: flex;
-        flex-direction: column;
-      }
-
-      .location-label {
-        font-size: 0.7rem;
-        color: #b91c1c;
-      }
-
-      .location-value {
-        font-size: 0.9rem;
-        font-weight: 700;
-        color: #7f1d1d;
-      }
-
-      .battery-visual {
-        background: #fee2e2;
-        border-radius: 8px;
-        padding: 12px;
-        margin-bottom: 12px;
-      }
-
-      .battery-bar-container {
-        height: 24px;
-        background: #fecaca;
-        border-radius: 12px;
-        overflow: hidden;
-        position: relative;
-        margin-top: 8px;
-      }
-
-      .battery-bar-current {
-        height: 100%;
-        background: linear-gradient(90deg, #10b981, #34d399);
-        border-radius: 12px 0 0 12px;
-        transition: width 0.5s ease;
-        position: relative;
-        z-index: 2;
-      }
-
-      /* === ANIMATION GẠCH CHÉO CHO PHẦN PIN THIẾU === */
-      @keyframes stripe-move {
-        0% {
-          background-position: 0 0;
-        }
-        100% {
-          background-position: 28px 0;
-        }
-      }
-
-      .battery-bar-needed {
-        position: absolute;
-        top: 0;
-        height: 100%;
-        background: repeating-linear-gradient(
-          45deg,
-          #fca5a5,
-          #fca5a5 5px,
-          #fecaca 5px,
-          #fecaca 10px
-        );
-        background-size: 14px 14px;
-        animation: stripe-move 0.8s linear infinite;
-        border-left: 2px dashed #dc2626;
-        border-radius: 0 12px 12px 0;
-        opacity: 0.85;
-      }
-
-      .battery-labels {
-        display: flex;
-        justify-content: space-between;
-        font-size: 0.75rem;
-        color: #991b1b;
-        margin-top: 8px;
-      }
-
-      /* === SUGGESTION CHIPS (Action Buttons) === */
-      .suggestion-chips {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-top: 12px;
-      }
-
-      .suggestion-chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 8px 14px;
-        background: var(--white);
-        border: 1px solid var(--gray-300);
-        border-radius: 20px;
-        font-size: 0.8rem;
-        font-weight: 500;
-        color: var(--gray-700);
-        cursor: pointer;
-        transition: all 0.2s ease;
-      }
-
-      .suggestion-chip:hover {
-        border-color: var(--primary);
-        color: var(--primary-dark);
-        background: rgba(16, 185, 129, 0.08);
-        transform: translateY(-1px);
-        box-shadow: 0 2px 8px rgba(16, 185, 129, 0.15);
-      }
-
-      .suggestion-chip.primary {
-        background: var(--primary);
-        color: var(--white);
-        border-color: var(--primary);
-      }
-
-      .suggestion-chip.primary:hover {
-        background: var(--primary-dark);
-        border-color: var(--primary-dark);
-        color: var(--white);
-      }
 
       /* === TOAST NOTIFICATION (Input Validation) === */
       .toast-container {
@@ -1575,180 +1207,238 @@
         }
       }
 
-      /* === NEW INFEASIBLE CARD DESIGN === */
+      /* === MATERIAL DESIGN 3 INFEASIBLE CARD === */
+      :root {
+        --md-sys-color-error-container: #fffbfb;
+        --md-sys-color-on-error-container: #410e0b;
+        --md-sys-color-error: #b3261e;
+        --md-sys-color-surface: #ffffff;
+        --md-sys-color-outline: #79747e;
+        --google-blue: #4285f4;
+        --google-red: #ea4335;
+        --google-green: #34a853;
+        --google-grey: #5f6368;
+      }
+
       .infeasibility-card {
-        background: white;
-        border: 1px solid #e5e7eb;
+        background: var(--md-sys-color-error-container);
         border-radius: 16px;
         padding: 0;
+        box-shadow: 0 4px 8px 3px rgba(0, 0, 0, 0.15),
+          0 1px 3px rgba(0, 0, 0, 0.3); /* Elevation 2 */
+        border: none;
         overflow: hidden;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+        font-family: "Google Sans", "Roboto", "Inter", sans-serif;
+        margin-bottom: 16px;
+        animation: slideInUp 0.4s cubic-bezier(0.2, 0, 0, 1);
       }
 
-      .inf-header {
-        background: linear-gradient(135deg, #fff1f2, #ffe4e6);
-        padding: 24px;
-        text-align: center;
-        border-bottom: 1px dashed #fda4af;
+      @keyframes slideInUp {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
       }
 
-      .inf-icon-wrapper {
-        width: 64px;
-        height: 64px;
-        background: white;
-        border-radius: 50%;
+      /* --- Header --- */
+      .md3-inf-header {
+        padding: 20px 24px 8px 24px;
         display: flex;
-        align-items: center;
-        justify-content: center;
-        margin: 0 auto 16px;
-        font-size: 32px;
-        box-shadow: 0 4px 12px rgba(225, 29, 72, 0.1);
+        gap: 16px;
+        align-items: flex-start;
       }
 
-      .inf-title {
-        font-size: 1.1rem;
-        font-weight: 800;
-        color: #9f1239;
+      .md3-inf-icon {
+        color: var(--md-sys-color-error);
+        font-variation-settings: 'FILL' 1; /* Solid Icon */
+        font-size: 28px;
+        margin-top: 2px;
+      }
+
+      .md3-inf-content {
+        flex: 1;
+      }
+
+      .md3-inf-title {
+        color: var(--md-sys-color-on-error-container);
+        font-size: 1.15rem; /* 18-20px */
+        font-weight: 500; /* Medium */
+        line-height: 1.4;
         margin-bottom: 4px;
       }
-      .inf-subtitle {
+
+      .md3-inf-subtitle {
+        color: var(--md-sys-color-on-error-container);
         font-size: 0.9rem;
-        color: #be123c;
+        opacity: 0.8;
+        line-height: 1.5;
       }
 
-      .inf-body {
-        padding: 24px;
+      /* --- Visualization (Progress) --- */
+      .md3-inf-viz {
+        padding: 8px 24px 20px 24px;
       }
 
-      /* Visual Map Schematic */
-      .route-schematic {
+      .md3-progress-labels {
         display: flex;
-        align-items: center;
         justify-content: space-between;
-        margin-bottom: 24px;
-        position: relative;
-        padding: 0 10px;
-      }
-      .route-line-bg {
-        position: absolute;
-        top: 14px;
-        left: 20px;
-        right: 20px;
-        height: 4px;
-        background: #f3f4f6;
-        z-index: 0;
-      }
-      .route-line-active {
-        position: absolute;
-        top: 14px;
-        left: 20px;
-        height: 4px;
-        background: #fb7185;
-        z-index: 1;
-      }
-
-      .schematic-point {
-        z-index: 2;
-        text-align: center;
-        width: 60px;
-      }
-      .point-dot {
-        width: 28px;
-        height: 28px;
-        border-radius: 50%;
-        background: white;
-        border: 3px solid #e5e7eb;
-        margin: 0 auto 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 12px;
-        font-weight: bold;
-      }
-      .point-dot.start {
-        border-color: #10b981;
-        color: #10b981;
-      }
-      .point-dot.stop {
-        border-color: #ef4444;
-        background: #ef4444;
-        color: white;
-        box-shadow: 0 0 0 4px #fee2e2;
-      }
-      .point-dot.end {
-        border-color: #94a3b8;
-        color: #94a3b8;
-      }
-      .point-label {
         font-size: 0.75rem;
-        color: #6b7280;
-        font-weight: 600;
-      }
-      .point-val {
-        font-size: 0.7rem;
-        color: #9ca3af;
-      }
-
-      .inf-stats {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 12px;
-        margin-bottom: 20px;
-      }
-      .inf-stat-box {
-        background: #f9fafb;
-        padding: 12px;
-        border-radius: 8px;
-        text-align: center;
-        border: 1px solid #f3f4f6;
-      }
-      .inf-stat-label {
-        font-size: 0.75rem;
-        color: #6b7280;
-        text-transform: uppercase;
-        margin-bottom: 4px;
-      }
-      .inf-stat-val {
-        font-size: 1rem;
-        font-weight: 700;
-        color: #1f2937;
-      }
-      .inf-stat-val.bad {
-        color: #e11d48;
-      }
-
-      .inf-suggestions {
-        margin-top: 10px;
-      }
-      .inf-sug-title {
-        font-size: 0.85rem;
-        font-weight: 700;
-        color: #374151;
-        margin-bottom: 10px;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-      .inf-chip {
-        display: inline-block;
-        padding: 8px 14px;
-        background: #f0fdf4;
-        border: 1px solid #bbf7d0;
-        color: #166534;
-        border-radius: 20px;
-        font-size: 0.8rem;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s;
-        margin-right: 8px;
+        color: var(--google-grey);
         margin-bottom: 8px;
+        font-weight: 500;
       }
-      .inf-chip:hover {
-        background: #dcfce7;
-        transform: translateY(-1px);
+
+      .md3-progress-track {
+        height: 12px;
+        background-color: transparent;
+        border-radius: 6px;
+        display: flex;
+        overflow: hidden;
+        position: relative;
       }
-      .inf-chip-icon {
-        margin-right: 4px;
+
+      /* Đoạn đi được */
+      .md3-bar-safe {
+        background-color: var(--google-green);
+        height: 100%;
+        border-radius: 6px 0 0 6px;
+        position: relative;
+      }
+
+      /* Đoạn thiếu hụt */
+      .md3-bar-risk {
+        flex: 1;
+        background: repeating-linear-gradient(
+          45deg,
+          #e0e0e0,
+          #e0e0e0 6px,
+          #f5f5f5 6px,
+          #f5f5f5 12px
+        );
+        height: 100%;
+        border-radius: 0 6px 6px 0;
+        position: relative;
+        border-left: 2px solid var(--md-sys-color-surface);
+      }
+
+      /* Điểm gãy (Failure Point Indicator) */
+      .md3-break-point {
+        position: absolute;
+        top: -4px; /* Nổi lên trên bar */
+        transform: translateX(50%);
+        width: 4px;
+        height: 20px;
+        background-color: var(--md-sys-color-error);
+        border-radius: 2px;
+        z-index: 2;
+        box-shadow: 0 0 0 2px var(--md-sys-color-surface);
+      }
+
+      .md3-break-label {
+        position: absolute;
+        top: 18px;
+        right: 0;
+        font-size: 0.7rem;
+        color: var(--md-sys-color-error);
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      /* --- Actions (Chips) --- */
+      .md3-actions {
+        padding: 0 24px 24px 24px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      /* Chip Base */
+      .md3-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        height: 36px;
+        padding: 0 16px;
+        border-radius: 18px; /* Full rounded */
+        font-size: 0.85rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+        border: 1px solid transparent;
+        font-family: "Google Sans", sans-serif;
+      }
+
+      .md3-chip:active {
+        transform: scale(0.96);
+      }
+
+      /* Primary Action: Tonal Button (Red tint) */
+      .md3-chip.primary {
+        background-color: #f2b8b5; /* Red 200 */
+        color: #601410; /* Red 900 */
+      }
+      .md3-chip.primary:hover {
+        background-color: #ec928e;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+      }
+
+      /* Secondary Action: Outlined */
+      .md3-chip.secondary {
+        background-color: transparent;
+        border: 1px solid var(--md-sys-color-outline);
+        color: var(--google-blue);
+      }
+      .md3-chip.secondary:hover {
+        background-color: rgba(66, 133, 244, 0.04);
+        border-color: var(--google-blue);
+      }
+
+      /* Tertiary Action: Text Only */
+      .md3-chip.tertiary {
+        background-color: transparent;
+        color: var(--google-grey);
+        padding: 0 12px;
+      }
+      .md3-chip.tertiary:hover {
+        background-color: rgba(0,0,0,0.05);
+        color: var(--md-sys-color-on-error-container);
+      }
+
+      /* --- Map Markers (Inverted Drop for Failure) --- */
+      .pin-fail-marker {
+        width: 40px;
+        height: 40px;
+        background-color: white;
+        border-radius: 50% 50% 50% 0;
+        transform: rotate(-45deg);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        box-shadow: 0 4px 10px rgba(179, 38, 30, 0.4);
+        border: 3px solid var(--md-sys-color-error);
+        position: relative;
+        z-index: 1000;
+      }
+
+      .pin-fail-marker .icon {
+        transform: rotate(45deg); /* Counter-rotate icon */
+        color: var(--md-sys-color-error);
+        font-size: 24px;
+        font-variation-settings: 'FILL' 1;
+      }
+
+      /* Pulsing effect for failure point */
+      .pin-fail-pulse {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        background: rgba(179, 38, 30, 0.4);
+        border-radius: 50% 50% 50% 0;
+        z-index: -1;
+        animation: pulse-fail 2s infinite;
+      }
+
+      @keyframes pulse-fail {
+        0% { transform: scale(1); opacity: 0.8; }
+        100% { transform: scale(1.6); opacity: 0; }
       }
 
       /* === IMPROVED ACTION BUTTONS === */
@@ -2186,6 +1876,246 @@
         border-radius: 6px;
       }
 
+      /* --- MAP LEGEND (CHÚ THÍCH) --- */
+      .map-legend {
+        position: absolute;
+        bottom: 24px;
+        right: 24px;
+        background: rgba(255, 255, 255, 0.95);
+        padding: 16px 20px;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        z-index: 2; /* Nằm trên bản đồ */
+        width: 320px;
+        font-family: "Inter", sans-serif;
+        border: 1px solid var(--gray-200);
+        backdrop-filter: blur(4px);
+      }
+
+      .legend-header {
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: var(--primary-dark);
+        border-bottom: 2px solid var(--primary);
+        padding-bottom: 8px;
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .legend-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+
+      .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.8rem;
+        color: var(--gray-700);
+      }
+
+      .legend-icon {
+        width: 20px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 0.9rem;
+      }
+
+      .legend-line {
+        width: 24px;
+        height: 4px;
+        border-radius: 2px;
+      }
+
+      /* Class tiện ích cho icon */
+      .icon {
+        font-family: 'Material Symbols Rounded';
+        font-weight: normal;
+        font-style: normal;
+        font-size: 24px;
+        line-height: 1;
+        letter-spacing: normal;
+        text-transform: none;
+        display: inline-block;
+        white-space: nowrap;
+        word-wrap: normal;
+        direction: ltr;
+      }
+
+      /* --- GOOGLE MAPS STYLE MARKERS --- */
+
+      /* 1. Base Marker Container */
+      .gm-marker {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        position: relative;
+        cursor: pointer;
+        /* Removed transition on container to prevent Mapbox conflict */
+      }
+      
+      /* FIX FLYING MARKER: Only affect children on hover */
+      .gm-marker:hover {
+        z-index: 9999 !important;
+      }
+
+      .gm-marker:hover .pin-drop, 
+      .gm-marker:hover .pin-dot,
+      .gm-marker:hover .pin-mini-icon,
+      .gm-marker:hover .nearest-station-icon,
+      .gm-marker:hover .pin-fail-marker { 
+        transform: scale(1.15) translateY(-6px);
+        transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+      }
+
+      /* Style cho Popup chuẩn Google Maps */
+      .google-popup .mapboxgl-popup-content {
+          padding: 0;
+          border-radius: 8px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+          border: none;
+          overflow: hidden;
+          min-width: 240px;
+          font-family: "Inter", sans-serif;
+      }
+
+      .popup-header {
+          padding: 8px 12px;
+          background: #f8f9fa;
+          border-bottom: 1px solid #e0e0e0;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 11px;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+      }
+
+      .popup-body {
+          padding: 12px;
+      }
+
+      .popup-title {
+          font-size: 14px;
+          font-weight: 600;
+          color: #202124;
+          margin-bottom: 4px;
+          line-height: 1.4;
+      }
+
+      .popup-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 13px;
+          color: #5f6368;
+          margin-bottom: 6px;
+      }
+      .popup-row:last-child { margin-bottom: 0; }
+
+      .popup-highlight {
+          color: #1a73e8; /* Google Blue */
+          font-weight: 500;
+      }
+      .popup-warning { color: #ea4335; font-weight: 600; }
+      .popup-cost { color: #188038; font-weight: 600; }
+
+      .popup-footer {
+          padding: 8px 12px;
+          background: #fff;
+          border-top: 1px solid #f1f3f4;
+          font-size: 11px;
+          color: #70757a;
+          display: flex;
+          justify-content: space-between;
+      }
+
+      /* 2. Pin Shape (Hình giọt nước - Dùng cho Đích & Trạm sạc chính) */
+      .pin-drop {
+        width: 36px;
+        height: 36px;
+        background-color: var(--pin-color, #ea4335);
+        border-radius: 50% 50% 50% 0;
+        transform: rotate(-45deg);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        border: 2px solid white;
+      }
+
+      /* Icon bên trong Pin (Phải xoay ngược lại 45 độ để thẳng hàng) */
+      .pin-drop .icon {
+        transform: rotate(45deg);
+        color: white;
+        font-size: 20px;
+      }
+
+      /* Hiệu ứng bóng đổ dưới chân Pin */
+      .pin-shadow {
+        position: absolute;
+        width: 16px;
+        height: 4px;
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 50%;
+        bottom: -6px;
+        left: 50%;
+        transform: translateX(-50%);
+        filter: blur(2px);
+        z-index: -1;
+      }
+
+      /* 3. Dot Shape (Hình tròn nhỏ - Dùng cho Xuất phát, Thu phí, Phà) */
+      .pin-dot {
+        width: 28px;
+        height: 28px;
+        background-color: var(--pin-color, #1a73e8);
+        border-radius: 50%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+        border: 2px solid white;
+      }
+      .pin-dot .icon {
+        color: white;
+        font-size: 18px;
+      }
+
+      /* 4. Mini Dot (Trạm sạc gợi ý xung quanh) */
+      .pin-mini {
+        width: 14px;
+        height: 14px;
+        background-color: white;
+        border: 3px solid var(--pin-color, #5f6368);
+        border-radius: 50%;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+      }
+
+      /* 5. Infeasible Label (Hết pin) */
+      .pin-label {
+        background: #d93025;
+        color: white;
+        padding: 6px 12px;
+        border-radius: 20px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: 600;
+        font-size: 12px;
+        box-shadow: 0 4px 10px rgba(217, 48, 37, 0.4);
+        border: 2px solid white;
+      }
+
+
+
       /* ===== RESPONSIVE ===== */
       @media (max-width: 1024px) {
         .app-container {
@@ -2237,7 +2167,194 @@
           padding: 12px 20px;
         }
       }
+    /* Style cho nút mở rộng (Sub-steps) */
+      .sub-steps-toggle {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.75rem;
+        color: var(--google-blue-600);
+        cursor: pointer;
+        margin-top: 8px;
+        padding: 6px 10px;
+        background: #f8fbff;
+        border: 1px solid #e0e0e0;
+        border-radius: 16px;
+        width: fit-content;
+        transition: all 0.2s;
+        font-weight: 500;
+      }
+      .sub-steps-toggle:hover {
+        background: #e8f0fe;
+        border-color: var(--google-blue-600);
+      }
+
+      /* Style cho danh sách con */
+      .sub-steps-container {
+        margin-top: 8px;
+        padding-left: 12px;
+        border-left: 2px solid #f1f3f4;
+        margin-left: 4px;
+        display: none; /* Mặc định ẩn */
+        animation: slideDown 0.3s ease-out;
+      }
+      .sub-steps-container.open {
+        display: block;
+      }
+
+      @keyframes slideDown {
+        from { opacity: 0; transform: translateY(-5px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      .sub-step-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        margin-bottom: 8px;
+        font-size: 0.8rem;
+        color: var(--google-grey-500);
+        line-height: 1.4;
+      }
+
+      .sub-step-item .dot {
+        width: 6px;
+        height: 6px;
+        background: #dadce0;
+        border-radius: 50%;
+        margin-top: 5px;
+        flex-shrink: 0;
+      }
+
+      .sub-step-dist {
+        font-size: 0.7rem;
+        color: #9aa0a6;
+        margin-left: auto;
+      }
+
+
+      /* === Cost Breakdown Tooltip === */
+      .cost-container {
+        position: relative;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 8px;
+        border-radius: 8px;
+        transition: background 0.2s;
+      }
+      .cost-container:hover {
+        background-color: #f1f3f4;
+      }
+      
+      .info-icon {
+        font-size: 16px;
+        color: #70757A;
+        opacity: 0.7;
+        transition: opacity 0.2s;
+      }
+      .cost-container:hover .info-icon {
+        opacity: 1;
+      }
+
+      .cost-tooltip {
+        display: none;
+        position: absolute;
+        bottom: 100%;
+        left: 50%;
+        transform: translateX(-50%) translateY(-8px) scale(0.95);
+        background: white;
+        border-radius: 12px;
+        padding: 16px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        width: 220px;
+        z-index: 2000;
+        opacity: 0;
+        transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        pointer-events: none;
+        margin-bottom: 8px;
+        border: 1px solid #e0e0e0;
+      }
+
+      /* Dynamic Tooltip (Portal) */
+      .dynamic-cost-tooltip {
+        position: fixed;
+        background: white;
+        border-radius: 12px;
+        padding: 16px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        width: 240px;
+        z-index: 99999;
+        font-family: "Inter", sans-serif;
+        border: 1px solid #e0e0e0;
+        animation: fadeIn 0.2s ease;
+        font-size: 0.85rem;
+      }
+      
+      .dynamic-cost-tooltip::before {
+        content: '';
+        position: absolute;
+        top: 50%;
+        right: 100%;
+        margin-top: -8px;
+        border-width: 8px;
+        border-style: solid;
+        border-color: transparent white transparent transparent;
+      }
+
+      /* Disable default inline tooltip display to avoid clipping */
+      .cost-container .cost-tooltip {
+        display: none !important;
+      }
+
+      .cost-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 10px;
+        font-size: 0.85rem;
+      }
+      .cost-row:last-child { margin-bottom: 0; }
+
+      .cost-row .icon {
+        font-size: 20px;
+        width: 20px;
+        text-align: center;
+      }
+      .cost-row .label { flex: 1; color: #5f6368; }
+      .cost-row .value { font-weight: 600; color: #202124; }
+
+      .cost-tooltip .divider {
+        height: 1px;
+        background: #E8EAED;
+        margin: 10px 0;
+      }
+      .cost-tooltip .disclaimer {
+        font-size: 0.7rem;
+        color: #70757A;
+        text-align: center;
+        font-style: italic;
+      }
+      /* Triangle */
+      .cost-tooltip::after {
+        content: '';
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        margin-left: -8px;
+        border-width: 8px;
+        border-style: solid;
+        border-color: white transparent transparent transparent;
+      }
+
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/@goongmaps/goong-js@1.0.9/dist/goong-js.js"></script>
+    <link
+      href="https://cdn.jsdelivr.net/npm/@goongmaps/goong-js@1.0.9/dist/goong-js.css"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0" />
   </head>
   <body>
     <div class="app-container">
@@ -2490,8 +2607,56 @@
             <p>Nhập điểm đi và điểm đến, sau đó nhấn Tìm đường</p>
           </div>
         </div>
-      </div>
+
+        <!-- Map Legend -->
+        <div id="mapLegend" class="map-legend" style="display: none">
+  <div class="legend-header">
+      <span class="icon material-symbols-rounded" style="margin-right:5px">map</span> 
+      Chú thích bản đồ
+  </div>
+  <div class="legend-grid">
+    <div class="legend-item">
+      <div class="legend-icon"><span class="icon material-symbols-rounded" style="color:#1a73e8">trip_origin</span></div>
+      Xuất phát
     </div>
+    <div class="legend-item">
+      <div class="legend-icon"><span class="icon material-symbols-rounded" style="color:#d93025">flag</span></div>
+      Đích đến
+    </div>
+
+    <div class="legend-item">
+      <div class="legend-line" style="background: #3b82f6;"></div>
+      Tối ưu
+    </div>
+    <div class="legend-item">
+      <div class="legend-line" style="background: #94a3b8;"></div>
+      Thay thế
+    </div>
+
+    <div class="legend-item">
+      <div class="legend-icon"><span class="icon material-symbols-rounded" style="color:#188038">ev_station</span></div>
+      Trạm sạc (Chọn)
+    </div>
+    <div class="legend-item">
+      <div class="legend-icon"><span class="icon material-symbols-rounded" style="color:#5f6368">ev_station</span></div>
+      Trạm sạc (Gần)
+    </div>
+
+    <div class="legend-item">
+      <div class="legend-icon"><span class="icon material-symbols-rounded" style="color:#f9ab00">toll</span></div>
+      Trạm thu phí
+    </div>
+    <div class="legend-item">
+      <div class="legend-icon"><span class="icon material-symbols-rounded" style="color:#1e3a8a">directions_boat</span></div>
+      Phà
+    </div>
+
+    <div class="legend-item">
+      <div class="legend-icon"><span class="icon material-symbols-rounded" style="color:#e67c73">local_gas_station</span></div>
+      Trạm dừng nghỉ
+    </div>
+  </div>
+</div>
 
     <!-- ===== MODAL DIALOG FOR INPUT VALIDATION ===== -->
     <div id="warningModal" class="modal-overlay">
@@ -2524,11 +2689,632 @@
       let currentRoutes = [];
       let loadingInterval = null;
       let loadingStartTime = 0;
-      let mapInstance = null; // Lưu reference đến map hiện tại
+      // let mapInstance = null; // CŨ: Lưu reference đến map hiện tại -> XOÁ
       let infeasibleLayers = []; // Lưu các layer của infeasible route
       let hasWarnedInput = false; // Biến cờ: chỉ cảnh báo 1 lần
       let pendingSearch = null; // Lưu callback khi người dùng bấm confirm
 
+      // --- KHAI BÁO BIẾN TOÀN CỤC ---
+      goongjs.accessToken = "3kieVmAErykLSTEnl574OCGXiv9qUlo1QdK1lqGU"; // Key Map Tiles của bạn
+      var map = new goongjs.Map({
+        container: "map",
+        style: "https://tiles.goong.io/assets/goong_map_web.json",
+        center: [106.660172, 10.762622], // [Lng, Lat]
+        zoom: 5, // Zoom xa để nhìn cả nước
+      });
+
+      map.addControl(new goongjs.NavigationControl()); // Nút zoom +/-
+
+      // Hàm giải mã Polyline
+      function decodePolyline(encoded) {
+        if (!encoded) return [];
+        var poly = [];
+        var index = 0,
+          len = encoded.length;
+        var lat = 0,
+          lng = 0;
+        while (index < len) {
+          var b,
+            shift = 0,
+            result = 0;
+          do {
+            b = encoded.charCodeAt(index++) - 63;
+            result |= (b & 0x1f) << shift;
+            shift += 5;
+          } while (b >= 0x20);
+          var dlat = result & 1 ? ~(result >> 1) : result >> 1;
+          lat += dlat;
+          shift = 0;
+          result = 0;
+          do {
+            b = encoded.charCodeAt(index++) - 63;
+            result |= (b & 0x1f) << shift;
+            shift += 5;
+          } while (b >= 0x20);
+          var dlng = result & 1 ? ~(result >> 1) : result >> 1;
+          lng += dlng;
+          poly.push([lat / 1e5, lng / 1e5]);
+        }
+        return poly;
+      }
+
+     function drawRouteOnGoong(routes, nearbyFeatures) {
+        // 1. Dọn dẹp layer cũ (Updated list)
+        [
+          "route-layer",
+          "route-casing",
+          "route-outline",
+          "route-best",
+          "route-source",
+          "infeasible-traveled",
+          "infeasible-remaining",
+          "rescue-line",
+        ].forEach((id) => {
+          if (map.getLayer(id)) map.removeLayer(id);
+          if (map.getSource(id)) map.removeSource(id);
+        });
+
+        // Clear markers
+        document.querySelectorAll(".gm-marker").forEach((el) => el.remove());
+
+        // 2. Ẩn placeholder, hiện Legend
+        const placeholder = document.querySelector(".map-placeholder");
+        if (placeholder) placeholder.style.display = "none";
+        document.getElementById("mapLegend").style.display = "block";
+
+        // --- LOGIC VẼ ĐƯỜNG (The "Halo" Effect) ---
+        routes.forEach((route, index) => {
+          if (route.is_best) return;
+          const geoJSON = {
+            type: "Feature",
+            geometry: {
+              type: "LineString",
+              coordinates: route.geometry_coords.map((c) => [c[1], c[0]]),
+            },
+          };
+          const sourceId = `route-alt-${index}`;
+          // Cleanup alt layers
+          if (map.getSource(sourceId)) {
+            if (map.getLayer(`layer-alt-${index}`))
+              map.removeLayer(`layer-alt-${index}`);
+            map.removeSource(sourceId);
+          }
+          
+          map.addSource(sourceId, { type: "geojson", data: geoJSON });
+          // Alternative Route: Neutral Grey, Thinner
+          map.addLayer(
+            {
+              id: `layer-alt-${index}`,
+              type: "line",
+              source: sourceId,
+              layout: { "line-join": "round", "line-cap": "round" },
+              paint: {
+                "line-color": "#9AA0A6", /* Google Grey 500 */
+                "line-width": 4,
+                "line-opacity": 0.8,
+              },
+            }
+            // Removed "road-label" to fix error
+          );
+        });
+
+        const bestRoute = routes.find((r) => r.is_best) || routes[0];
+        const bestGeoJSON = {
+          type: "Feature",
+          geometry: {
+            type: "LineString",
+            coordinates: bestRoute.geometry_coords.map((c) => [c[1], c[0]]),
+          },
+        };
+        map.addSource("route-best", { type: "geojson", data: bestGeoJSON });
+
+        // Layer 1: The Casing/Halo (Contrast Buffer) - Darker Blue
+        map.addLayer(
+          {
+            id: "route-casing",
+            type: "line",
+            source: "route-best",
+            layout: { "line-join": "round", "line-cap": "round" },
+            paint: {
+              "line-color": "#1557b0", /* Darker shade of blue for contrast */
+              "line-width": 10,
+              "line-opacity": 0.8
+            },
+          }
+          // Removed "road-label" to fix error
+        );
+
+        // Layer 2: The Main Route (Traffic/Navigation) - Google Blue
+        map.addLayer(
+          {
+            id: "route-layer",
+            type: "line",
+            source: "route-best",
+            layout: { "line-join": "round", "line-cap": "round" },
+            paint: {
+              "line-color": "#1A73E8", /* Google Blue 600 */
+              "line-width": 6,
+            },
+          }
+          // Removed "road-label" to fix error
+        );
+
+        // 5. Vẽ Marker Điểm đi / Điểm đến (Update colors/icons)
+        const startCoord = bestRoute.geometry_coords[0];
+        const endCoord =
+          bestRoute.geometry_coords[bestRoute.geometry_coords.length - 1];
+
+        addMarker(
+          [startCoord[1], startCoord[0]],
+          "trip_origin",
+          "start",
+          "<b>Điểm xuất phát</b>"
+        );
+        addMarker(
+          [endCoord[1], endCoord[0]],
+          "flag",
+          "end",
+          "<b>Điểm đến</b>"
+        );
+
+        // 6. Vẽ Trạm Sạc
+        if (bestRoute.charging_stops) {
+          bestRoute.charging_stops.forEach((stop, index) => {
+            // Tính toán màu sắc dựa trên công suất (UX Concept: Càng mạnh càng đậm)
+            const power = stop.station.power || 150;
+            const powerLabel = power >= 150 ? 'Siêu nhanh (DC)' : (power >= 50 ? 'Nhanh (DC)' : 'Thường (AC)');
+            const address = stop.station.address || 'Đang cập nhật địa chỉ';
+            const status = stop.station.status || 'Sẵn sàng';
+            
+            const popupHTML = `
+                <div class="popup-header" style="color: #188038">
+                    <span class="icon material-symbols-rounded" style="font-size:14px">ev_station</span>
+                    TRẠM SẠC ĐIỆN #${index + 1}
+                </div>
+                <div class="popup-body">
+                    <div class="popup-title">${stop.station.name}</div>
+                    
+                    <div class="popup-row" style="align-items: flex-start; margin-bottom: 8px;">
+                        <span class="icon material-symbols-rounded" style="font-size:16px; margin-top: 2px;">place</span>
+                        <span style="font-size: 12px; color: #70757a;">${address}</span>
+                    </div>
+
+                    <div class="popup-row">
+                        <span class="icon material-symbols-rounded" style="font-size:16px; color:#fbbc04">bolt</span>
+                        <span style="font-weight:600">${power} kW • ${powerLabel}</span>
+                    </div>
+                    
+                    <div class="popup-row">
+                        <span class="icon material-symbols-rounded" style="font-size:16px">battery_charging_full</span>
+                        <span>Sạc: <b style="color:#d93025">${stop.start_charge}%</b> ➝ <b style="color:#188038">${stop.end_charge}%</b></span>
+                    </div>
+                    
+                    <div class="popup-row">
+                        <span class="icon material-symbols-rounded" style="font-size:16px">schedule</span>
+                        <span>Thời gian: <b>${stop.charge_time} phút</b></span>
+                    </div>
+
+                    <div class="popup-row">
+                         <span class="icon material-symbols-rounded" style="font-size:16px">payments</span>
+                         <span class="popup-cost">${formatCurrency(stop.charging_cost)}</span>
+                    </div>
+                </div>
+                <div class="popup-footer">
+                    <span>Đã đi được: ${Math.round(stop.distance_from_start)}km</span>
+                    <span>${status}</span>
+                </div>
+            `;
+
+            addMarker(
+              [stop.station.lon, stop.station.lat],
+              "ev_station",
+              "station",
+              popupHTML
+            );
+          });
+        }
+
+        // 7. Vẽ Sự Kiện (Phà, Thu phí...)
+        if (bestRoute.travel_events) {
+            bestRoute.travel_events.forEach((event) => {
+                if (!event.coords) return;
+                const lngLat = [event.coords[1], event.coords[0]];
+                
+                let popupHTML = "";
+                let iconType = "";
+                let headerColor = "#5f6368";
+
+                // === TEMPLATE CHO TRẠM THU PHÍ ===
+                if (event.type === "toll") {
+                    iconType = "toll";
+                    headerColor = "#f9ab00"; // Vàng cam
+                    const highwayName = event.details && event.details.highway !== 'N/A' 
+                        ? event.details.highway 
+                        : 'Đường quốc lộ';
+                    
+                    popupHTML = `
+                        <div class="popup-header" style="color: ${headerColor}">
+                            <span class="icon material-symbols-rounded" style="font-size:14px">toll</span>
+                            TRẠM THU PHÍ
+                        </div>
+                        <div class="popup-body">
+                            <div class="popup-title">${event.name}</div>
+                            <div class="popup-row">
+                                <span class="icon material-symbols-rounded" style="font-size:16px">add_road</span>
+                                <span>${highwayName}</span>
+                            </div>
+                            <div class="popup-row">
+                                <span class="icon material-symbols-rounded" style="font-size:16px">payments</span>
+                                <span class="popup-cost">${formatCurrency(event.cost)}</span>
+                            </div>
+                        </div>
+                        <div class="popup-footer">
+                            <span>Cách điểm đi: ${Math.round(event.km)}km</span>
+                        </div>
+                    `;
+                } 
+                
+                // === TEMPLATE CHO PHÀ ===
+                else if (event.type === "ferry") {
+                    iconType = "ferry";
+                    headerColor = "#1e3a8a"; // Xanh đậm
+                    const waitTime = event.details ? event.details.crossing_time_min : 15;
+                    const vehicleInfo = event.details && event.details.vehicle_allowed 
+                        ? event.details.vehicle_allowed 
+                        : 'Ô tô & Xe máy';
+                    
+                    popupHTML = `
+                        <div class="popup-header" style="color: ${headerColor}">
+                            <span class="icon material-symbols-rounded" style="font-size:14px">directions_boat</span>
+                            BẾN PHÀ
+                        </div>
+                        <div class="popup-body">
+                            <div class="popup-title">${event.name}</div>
+                            <div class="popup-row">
+                                <span class="icon material-symbols-rounded" style="font-size:16px">schedule</span>
+                                <span>Thời gian qua phà: ~${waitTime}p</span>
+                            </div>
+                             <div class="popup-row">
+                                <span class="icon material-symbols-rounded" style="font-size:16px">directions_car</span>
+                                <span style="font-size:12px">${vehicleInfo}</span>
+                            </div>
+                            <div class="popup-row">
+                                <span class="icon material-symbols-rounded" style="font-size:16px">payments</span>
+                                <span class="popup-cost">${formatCurrency(event.cost)}</span>
+                            </div>
+                        </div>
+                        <div class="popup-footer">
+                            <span>Tại km số: ${event.km.toFixed(1)}</span>
+                        </div>
+                    `;
+                }
+                
+                // === TEMPLATE CHO TRẠM DỪNG NGHỈ (HIGHWAY STOP) ===
+                else if (event.type === "highway_stop") {
+                    iconType = "highway";
+                    headerColor = "#e67c73";
+                    // Lấy danh sách tiện ích từ JSON (nếu có array)
+                    const amenities = event.details && event.details.amenities 
+                        ? (Array.isArray(event.details.amenities) ? event.details.amenities.join(', ') : event.details.amenities)
+                        : 'WC, Ăn uống, Đổ xăng';
+
+                    popupHTML = `
+                        <div class="popup-header" style="color: ${headerColor}">
+                            <span class="icon material-symbols-rounded" style="font-size:14px">local_gas_station</span>
+                            TRẠM DỪNG NGHỈ
+                        </div>
+                        <div class="popup-body">
+                            <div class="popup-title">${event.name}</div>
+                            <div class="popup-row" style="align-items: flex-start">
+                                <span class="icon material-symbols-rounded" style="font-size:16px; margin-top:2px">storefront</span>
+                                <span style="font-size:12px; color:#70757a; line-height: 1.4;">${amenities}</span>
+                            </div>
+                        </div>
+                        <div class="popup-footer">
+                            <span>Tại km số: ${event.km.toFixed(1)}</span>
+                        </div>
+                    `;
+                }
+
+                if (popupHTML) {
+                    addMarker(lngLat, iconType, event.type, popupHTML);
+                }
+            });
+        }
+
+        // 8. Vẽ Nearby Features
+        if (nearbyFeatures && nearbyFeatures.charging) {
+          nearbyFeatures.charging.forEach((s) => {
+            const isSelected = bestRoute.charging_stops?.some(
+              (stop) => stop.station.name === s.name
+            );
+            if (!isSelected)
+              addMarker(
+                [s.lon, s.lat],
+                "ev_station",
+                "nearby",
+                `<b>${s.name}</b><br>${s.power || "?"}kW`
+              );
+          });
+        }
+
+        // 9. Zoom Map
+        const coordinates = bestGeoJSON.geometry.coordinates;
+        const bounds = coordinates.reduce(
+          (bounds, coord) => bounds.extend(coord),
+          new goongjs.LngLatBounds(coordinates[0], coordinates[0])
+        );
+        map.fitBounds(bounds, { padding: 80 });
+      }
+
+// === HÀM VẼ LỘ TRÌNH KHÔNG KHẢ THI TRÊN GOONG (MD3 STYLE) ===
+      function drawInfeasibleOnGoong(data) {
+        // 1. Dọn dẹp (Sửa class selector thành .gm-marker)
+        [
+          "route-layer",
+          "route-outline",
+          "route-best",
+          "route-source",
+          "infeasible-traveled",
+          "infeasible-remaining",
+          "rescue-line",
+        ].forEach((id) => {
+          if (map.getLayer(id)) map.removeLayer(id);
+          if (map.getSource(id)) map.removeSource(id);
+        });
+        document.querySelectorAll(".gm-marker").forEach((el) => el.remove());
+
+        // 2. Setup Map
+        document.querySelector(".map-placeholder").style.display = "none";
+        document.getElementById("mapLegend").style.display = "block";
+
+        // 3. Xử lý tọa độ
+        const traveledPath = decodePolyline(data.traveled_geometry).map((c) => [
+          c[1],
+          c[0],
+        ]);
+        const remainingPath = decodePolyline(data.remaining_geometry).map(
+          (c) => [c[1], c[0]]
+        );
+
+        let startCoord = [106.66, 10.76];
+        if (traveledPath.length > 0) startCoord = traveledPath[0];
+
+        let failCoord;
+        if (data.failure_point && data.failure_point.lon) {
+          failCoord = [data.failure_point.lon, data.failure_point.lat];
+        } else if (traveledPath.length > 0) {
+          failCoord = traveledPath[traveledPath.length - 1];
+        }
+
+        const endCoord =
+          remainingPath.length > 0
+            ? remainingPath[remainingPath.length - 1]
+            : failCoord;
+
+        // 4. Vẽ Line (Blue & Red Dashed)
+        // Đoạn đi được (Safe Zone - Google Blue)
+        if (traveledPath.length > 0) {
+          map.addSource("infeasible-traveled", {
+            type: "geojson",
+            data: {
+              type: "Feature",
+              geometry: { type: "LineString", coordinates: traveledPath },
+            },
+          });
+          map.addLayer({
+            id: "infeasible-traveled",
+            type: "line",
+            source: "infeasible-traveled",
+            layout: { "line-join": "round", "line-cap": "round" },
+            paint: { "line-color": "#4285f4", "line-width": 6 }, // Blue, dày hơn
+          });
+        }
+
+        // Đoạn thiếu hụt (Critical Zone - Red Dashed)
+        if (remainingPath.length > 0) {
+          map.addSource("infeasible-remaining", {
+            type: "geojson",
+            data: {
+              type: "Feature",
+              geometry: { type: "LineString", coordinates: remainingPath },
+            },
+          });
+          map.addLayer({
+            id: "infeasible-remaining",
+            type: "line",
+            source: "infeasible-remaining",
+            layout: { "line-join": "round", "line-cap": "round" },
+            paint: {
+              "line-color": "#ea4335", // Red
+              "line-width": 4,
+              "line-dasharray": [2, 4], // Nét đứt rộng hơn
+              "line-opacity": 0.8,
+            },
+          });
+        }
+
+        // 5. Vẽ Line Cứu hộ (Grey Dashed)
+        if (data.nearest_station_to_failure) {
+          const stationCoord = [
+            data.nearest_station_to_failure.lon,
+            data.nearest_station_to_failure.lat,
+          ];
+          map.addSource("rescue-line", {
+            type: "geojson",
+            data: {
+              type: "Feature",
+              geometry: {
+                type: "LineString",
+                coordinates: [failCoord, stationCoord],
+              },
+            },
+          });
+          map.addLayer({
+            id: "rescue-line",
+            type: "line",
+            source: "rescue-line",
+            layout: { "line-join": "round", "line-cap": "round" },
+            paint: {
+              "line-color": "#5f6368",
+              "line-width": 2,
+              "line-dasharray": [1, 2],
+            },
+          });
+
+          addMarker(
+            stationCoord,
+            "ev_station",
+            "nearby",
+            `<div style="text-align:center"><b style="color:#1a73e8">TRẠM SẠC GẦN NHẤT</b><br><b>${data.nearest_station_to_failure.name}</b><br>Cách: ${data.nearest_station_to_failure.distance_km}km</div>`
+          );
+        }
+
+        // 6. Vẽ Marker
+        addMarker(startCoord, "trip_origin", "start", "Điểm xuất phát");
+        // Điểm đến (Unreachable state)
+        addMarker(endCoord, "flag", "end-unreachable", "Đích (Không thể tới)");
+
+        // Điểm Chết (Failure Point - Focal Point)
+        if (failCoord) {
+          addMarker(
+            failCoord,
+            "bolt",
+            "fail-md3",
+            "<b>⚠️ HẾT PIN TẠI ĐÂY</b><br>Vui lòng sạc thêm hoặc tìm trạm gần nhất."
+          );
+        }
+
+        // 7. Zoom
+        const bounds = new goongjs.LngLatBounds();
+        traveledPath.forEach((p) => bounds.extend(p));
+        remainingPath.forEach((p) => bounds.extend(p));
+        if (data.nearest_station_to_failure)
+          bounds.extend([
+            data.nearest_station_to_failure.lon,
+            data.nearest_station_to_failure.lat,
+          ]);
+        map.fitBounds(bounds, { padding: 80 });
+      }
+
+      // === HÀM TẠO MARKER CHUẨN GOOGLE MAPS STYLE (ĐÃ SỬA) ===
+      function addMarker(lngLat, iconName, type, popupHTML) {
+        const el = document.createElement("div");
+        el.className = "gm-marker"; // Class chung để dễ quản lý xóa
+
+        // Cấu hình mặc định
+        let color = "#ea4335";
+        let className = "pin-drop";
+        let innerIcon = iconName;
+        let offset = [0, -26]; // Đuôi giọt nước chạm đất (36px * sqrt(2) / 2 ~= 25.5px)
+
+        switch (type) {
+          case "start":
+            color = "#1a73e8";
+            innerIcon = "trip_origin";
+            className = "pin-dot";
+            offset = [0, 0];
+            break;
+          case "end":
+            color = "#d93025";
+            innerIcon = "flag";
+            className = "pin-drop";
+            offset = [0, -26];
+            break;
+          case "end-unreachable":
+            color = "#9aa0a6"; // Grey
+            innerIcon = "flag";
+            className = "pin-drop";
+            el.style.opacity = "0.6"; // Faded
+            offset = [0, -26];
+            break;
+          case "station":
+            color = "#188038";
+            innerIcon = "ev_station";
+            className = "pin-drop";
+            offset = [0, -26];
+            break;
+          case "nearby":
+            color = "#5f6368"; // Màu xám (như legend)
+            innerIcon = "ev_station"; // Icon trạm sạc
+            className = "pin-dot"; // ĐỔI TỪ 'pin-mini' SANG 'pin-dot' để hiện icon
+            offset = [0, 0];
+            break;
+          case "toll":
+            color = "#f9ab00";
+            innerIcon = "toll";
+            className = "pin-dot";
+            offset = [0, 0];
+            break;
+          case "ferry":
+            color = "#1e3a8a";
+            innerIcon = "directions_boat";
+            className = "pin-dot";
+            offset = [0, 0];
+            break;
+          case "highway":
+            color = "#e67c73";
+            innerIcon = "local_gas_station";
+            className = "pin-mini-icon";
+            offset = [0, 0];
+            break;
+          case "fail-md3": // NEW MD3 STYLE FAILURE MARKER
+            el.innerHTML = `
+                <div class="pin-fail-marker">
+                    <span class="icon material-symbols-rounded">bolt</span>
+                </div>
+                <div class="pin-fail-pulse"></div>
+            `;
+            // Offset for center of 40px rotated square is tricky, visually adjusting
+            // Rotated 40px square, center is roughly at 0, -20px visually if pointing down?
+            // Actually it's an inverted drop, pointing down-ish. 
+            // Let's use [0, -20] as center.
+            createGoongMarker(el, lngLat, popupHTML, [0, -20]);
+            return;
+          case "fail": // OLD STYLE (Fallback)
+            // Marker dạng nhãn cảnh báo đặc biệt
+            el.innerHTML = `
+                <div class="pin-label">
+                    <span class="icon material-symbols-rounded" style="font-size:16px">battery_alert</span>
+                    <span>HẾT PIN</span>
+                </div>
+                <div class="pin-shadow" style="width:20px; bottom:-4px"></div>
+            `;
+            // Tạo marker và return ngay (không chạy logic default bên dưới)
+            createGoongMarker(el, lngLat, popupHTML, [0, -15]);
+            return;
+        }
+
+        // Logic render HTML cho các loại thường
+        if (className === "pin-mini") {
+          el.innerHTML = `<div class="${className}" style="--pin-color: ${color}"></div>`;
+        } else {
+          el.innerHTML = `
+            <div class="${className}" style="--pin-color: ${color}">
+                <span class="icon material-symbols-rounded" style="font-size: ${
+                  className === "pin-drop" ? "20px" : "16px"
+                }">${innerIcon}</span>
+            </div>
+            ${className === "pin-drop" ? '<div class="pin-shadow"></div>' : ""} 
+        `;
+        }
+
+        createGoongMarker(el, lngLat, popupHTML, offset);
+      }
+
+// Hàm phụ trợ tạo marker để code gọn hơn
+function createGoongMarker(el, lngLat, popupHTML, offset) {
+    const marker = new goongjs.Marker({ element: el, offset: offset })
+        .setLngLat(lngLat)
+        .addTo(map);
+
+    if (popupHTML) {
+        const popup = new goongjs.Popup({ offset: 25, closeButton: false, className: "google-popup" })
+            .setHTML(popupHTML);
+        el.addEventListener("mouseenter", () => marker.setPopup(popup).togglePopup());
+        el.addEventListener("mouseleave", () => marker.togglePopup());
+    }
+}
       // === TOAST NOTIFICATION SYSTEM ===
       function createToastContainer() {
         let container = document.getElementById("toast-container");
@@ -2576,28 +3362,33 @@
       // === MODAL DIALOG LOGIC ===
       function checkInputQuality(text) {
         text = text.trim().toLowerCase();
-        // Check if contains city/province keywords
-        const cityKeywords = [
-          "thành phố",
-          "tp.",
-          "tỉnh",
-          "hà nội",
-          "hồ chí minh",
-          "đà nẵng",
-          "hải phòng",
-          "cần thơ",
-        ];
-        const hasCityKeyword = cityKeywords.some((kw) => text.includes(kw));
-
-        // If it's too detailed (has comma, street number) and no city keyword
-        if (
-          text.length > 5 &&
-          !hasCityKeyword &&
-          (text.includes(",") || /\d+/.test(text))
-        ) {
-          return false; // Suspicious - not city format
+        
+        // 1. Check for detailed address indicators (numbers or commas)
+        // If it has numbers or commas, it's likely a specific address, not a city/province.
+        if (/\d/.test(text) || text.includes(",")) {
+            return false; 
         }
-        return true;
+
+        // 2. List of valid Vietnam Provinces/Cities & Common Aliases
+        const validLocations = [
+            "an giang", "bà rịa", "vũng tàu", "bắc giang", "bắc kạn", "bạc liêu", "bắc ninh", "bến tre", 
+            "bình định", "bình dương", "bình phước", "bình thuận", "cà mau", "cao bằng", "đắk lắk", 
+            "đắk nông", "điện biên", "đồng nai", "đồng tháp", "gia lai", "hà giang", "hà nam", "hà tĩnh", 
+            "hải dương", "hậu giang", "hòa bình", "hưng yên", "khánh hòa", "kiên giang", "kon tum", 
+            "lai châu", "lâm đồng", "lạng sơn", "lào cai", "long an", "nam định", "nghệ an", "ninh bình", 
+            "ninh thuận", "phú thọ", "phú yên", "quảng bình", "quảng nam", "quảng ngãi", "quảng ninh", 
+            "quảng trị", "sóc trăng", "sơn la", "tây ninh", "thái bình", "thái nguyên", "thanh hóa", 
+            "thừa thiên huế", "tiền giang", "trà vinh", "tuyên quang", "vĩnh long", "vĩnh phúc", "yên bái", 
+            "cần thơ", "đà nẵng", "hải phòng", "hà nội", "hồ chí minh", "tphcm", "sài gòn", "hcm",
+            "buôn ma thuột", "biên hòa", "nha trang", "pleiku", "quy nhơn", "vinh", "vũng tàu", "đà lạt",
+            "huế", "long xuyên", "việt trì", "thủ dầu một", "phan thiết", "tuy hòa", "rạch giá"
+        ];
+
+        // 3. Check if input contains any valid location
+        // We check if the input *includes* a valid name (e.g. "tp. hồ chí minh" includes "hồ chí minh")
+        const isValidLocation = validLocations.some(loc => text.includes(loc));
+
+        return isValidLocation;
       }
 
       function showWarningModal(callback) {
@@ -2616,183 +3407,6 @@
         }
       }
 
-      // === POLYLINE DECODER (Google format) ===
-      function decodePolyline(encoded) {
-        if (!encoded) return [];
-        const poly = [];
-        let index = 0,
-          lat = 0,
-          lng = 0;
-
-        while (index < encoded.length) {
-          let b,
-            shift = 0,
-            result = 0;
-          do {
-            b = encoded.charCodeAt(index++) - 63;
-            result |= (b & 0x1f) << shift;
-            shift += 5;
-          } while (b >= 0x20);
-          const dlat = result & 1 ? ~(result >> 1) : result >> 1;
-          lat += dlat;
-
-          shift = 0;
-          result = 0;
-          do {
-            b = encoded.charCodeAt(index++) - 63;
-            result |= (b & 0x1f) << shift;
-            shift += 5;
-          } while (b >= 0x20);
-          const dlng = result & 1 ? ~(result >> 1) : result >> 1;
-          lng += dlng;
-
-          poly.push([lat / 1e5, lng / 1e5]);
-        }
-        return poly;
-      }
-
-      // === DRAW INFEASIBLE ROUTE ON MAP ===
-      function drawInfeasibleRouteOnMap(infeasibilityData) {
-        const mapEl = document.getElementById("map");
-        if (!mapEl) return;
-
-        const traveledGeometry = infeasibilityData.traveled_geometry;
-        const remainingGeometry = infeasibilityData.remaining_geometry;
-        const failurePoint = infeasibilityData.failure_point;
-        const nearestStation = infeasibilityData.nearest_station_to_failure;
-
-        if (!traveledGeometry && !remainingGeometry) return;
-
-        // Decode polylines
-        const traveledCoords = traveledGeometry
-          ? decodePolyline(traveledGeometry)
-          : [];
-        const remainingCoords = remainingGeometry
-          ? decodePolyline(remainingGeometry)
-          : [];
-
-        // 1. Reset container with map div only (no scripts in innerHTML)
-        mapEl.innerHTML =
-          '<div id="infeasible-map" style="width: 100%; height: 100%;"></div>';
-
-        // 2. Load Leaflet CSS if not already loaded
-        if (!document.getElementById("leaflet-css")) {
-          const link = document.createElement("link");
-          link.id = "leaflet-css";
-          link.rel = "stylesheet";
-          link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-          document.head.appendChild(link);
-        }
-
-        // 3. Define map drawing logic (execute outside innerHTML)
-        const runMapLogic = () => {
-          // Calculate center
-          let center = [16.0, 108.0]; // Default Vietnam center
-          if (failurePoint) {
-            center = [failurePoint.lat, failurePoint.lon];
-          } else if (traveledCoords.length > 0) {
-            center = traveledCoords[Math.floor(traveledCoords.length / 2)];
-          }
-
-          // Initialize map
-          const map = L.map("infeasible-map").setView(center, 8);
-          L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-            maxZoom: 18,
-            attribution: "© OpenStreetMap",
-          }).addTo(map);
-
-          // Draw traveled route (RED - solid)
-          if (traveledCoords.length > 0) {
-            L.polyline(traveledCoords, {
-              color: "#ef4444",
-              weight: 6,
-              opacity: 0.9,
-            }).addTo(map);
-
-            // Start marker
-            L.marker(traveledCoords[0])
-              .addTo(map)
-              .bindPopup("<b>🚗 Xuất phát</b>");
-          }
-
-          // Draw remaining route (GREY - dashed)
-          if (remainingCoords.length > 0) {
-            L.polyline(remainingCoords, {
-              color: "#9ca3af",
-              weight: 4,
-              opacity: 0.6,
-              dashArray: "10, 10",
-            }).addTo(map);
-
-            // End marker
-            const lastCoord = remainingCoords[remainingCoords.length - 1];
-            L.marker(lastCoord)
-              .addTo(map)
-              .bindPopup("<b>🏁 Đích (Không thể tới)</b>");
-          }
-
-          // Failure point marker (CRITICAL)
-          if (failurePoint) {
-            const failIcon = L.divIcon({
-              html: '<div style="background: #dc2626; color: white; padding: 8px 12px; border-radius: 20px; font-weight: bold; font-size: 12px; box-shadow: 0 3px 8px rgba(220, 38, 38, 0.5); border: 2px solid white; white-space: nowrap;">⚡ HẾT PIN</div>',
-              className: "fail-marker",
-              iconSize: [100, 30],
-              iconAnchor: [50, 15],
-            });
-            L.marker([failurePoint.lat, failurePoint.lon], { icon: failIcon })
-              .addTo(map)
-              .bindPopup("<b>⚠️ Xe dừng tại đây</b><br>Pin đã cạn kiệt");
-          }
-
-          // Nearest station marker (if available)
-          if (nearestStation) {
-            const stationLatLng = [nearestStation.lat, nearestStation.lon];
-
-            // Connecting line from failure point to station
-            if (failurePoint) {
-              L.polyline(
-                [[failurePoint.lat, failurePoint.lon], stationLatLng],
-                { color: "#f59e0b", weight: 3, dashArray: "5, 5", opacity: 0.8 }
-              ).addTo(map);
-            }
-
-            // Station marker
-            const stationIcon = L.divIcon({
-              html: `<div style="background: #f59e0b; color: white; padding: 6px 10px; border-radius: 15px; font-weight: bold; font-size: 11px; box-shadow: 0 2px 6px rgba(245, 158, 11, 0.4);">⚡ ${
-                nearestStation.distance_km || "?"
-              }km</div>`,
-              className: "station-marker",
-              iconSize: [80, 24],
-              iconAnchor: [40, 12],
-            });
-            L.marker(stationLatLng, { icon: stationIcon })
-              .addTo(map)
-              .bindPopup(
-                `<b>⚡ ${nearestStation.name}</b><br>Công suất: ${
-                  nearestStation.power || 150
-                }kW<br>Cách điểm hết pin: ${nearestStation.distance_km}km`
-              );
-          }
-
-          // Fit bounds to show all elements
-          const allCoords = [...traveledCoords, ...remainingCoords];
-          if (allCoords.length > 0) {
-            map.fitBounds(allCoords, { padding: [50, 50] });
-          }
-        };
-
-        // 4. Load Leaflet JS and execute map logic
-        if (typeof L === "undefined") {
-          const script = document.createElement("script");
-          script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-          script.onload = runMapLogic;
-          document.body.appendChild(script);
-        } else {
-          // Leaflet already loaded, run immediately
-          setTimeout(runMapLogic, 100); // Small delay to ensure DOM is ready
-        }
-      }
-
       // === FORMAT CURRENCY FUNCTION ===
       function formatCurrency(amount) {
         if (amount === null || amount === undefined || isNaN(amount))
@@ -2802,29 +3416,29 @@
 
       // === BUILD TRAVEL EVENTS TIMELINE ===
       function buildTravelEventsHtml(travelEvents) {
-        if (!travelEvents || travelEvents.length === 0) {
-          return '<div class="no-events">✅ Không có trạm thu phí/phà trên đường</div>';
-        }
+    if (!travelEvents || travelEvents.length === 0) {
+        return '<div class="no-events"><span class="icon material-symbols-rounded" style="vertical-align: middle; color: var(--primary)">check_circle</span> Không có trạm thu phí/phà</div>';
+    }
 
-        const eventIcons = {
-          toll: "�",
-          ferry: "🚢",
-          charging: "⚡",
-          highway_stop: "🛣️",
-        };
+    // Mapping type sang tên Icon Material
+    const iconMap = {
+        toll: "toll",
+        ferry: "directions_boat",
+        charging: "ev_station",
+        highway_stop: "local_gas_station"
+    };
 
-        const eventLabels = {
-          toll: "Trạm thu phí",
-          ferry: "Phà",
-          charging: "Sạc pin",
-          highway_stop: "Trạm dừng",
-        };
+    const labelMap = {
+        toll: "Trạm thu phí",
+        ferry: "Phà",
+        charging: "Sạc pin",
+        highway_stop: "Trạm dừng"
+    };
 
-        let html = '<div class="travel-events-timeline">';
+    let html = '<div class="travel-events-timeline">';
 
         travelEvents.forEach((event, index) => {
-          const icon = eventIcons[event.type] || "📍";
-          const label = eventLabels[event.type] || event.type;
+        const iconName = iconMap[event.type] || "place";
           const costClass = event.cost > 0 ? "" : "free";
           const costText =
             event.cost > 0 ? formatCurrency(event.cost) : "Miễn phí";
@@ -2851,103 +3465,94 @@
 
           html += `
             <div class="travel-event">
-              <div class="event-marker ${event.type}">${icon}</div>
-              <div class="event-content">
-                <div class="event-header">
-                  <span class="event-name">${event.name}</span>
-                  <span class="event-cost ${costClass}">${costText}</span>
-                </div>
-                <div class="event-meta">
-                  <span class="event-km">Km ${event.km}</span>
-                  ${detailsHtml}
-                </div>
+              <div class="event-marker ${event.type}" style="display:flex; align-items:center; justify-content:center;">
+                  <span class="icon material-symbols-rounded" style="font-size: 14px;">${iconName}</span>
               </div>
+              <div class="event-content">
+                 </div>
             </div>
-          `;
-        });
+        `;
+    });
 
         html += "</div>";
         return html;
       }
 
       // === BUILD INFEASIBILITY ERROR CARD (Enhanced UX) ===
-      // === BUILD INFEASIBILITY CARD (NEW HUMAN-CENTRIC DESIGN) ===
+      // === BUILD INFEASIBILITY CARD (MATERIAL DESIGN 3) ===
       function buildInfeasibilityCard(errorData) {
         const loc = errorData.location || {};
         const bat = errorData.battery_state || {};
 
-        // Calculate visual schematic widths
-        const tripTotal =
-          (loc.km_from_start || 0) + (loc.km_to_destination || 0);
-        const percentTravel =
-          tripTotal > 0 ? (loc.km_from_start / tripTotal) * 100 : 0;
+        // 1. Calculate Progress for Visualization
+        const traveled = loc.km_from_start || 0;
+        const remaining = loc.km_to_destination || 0;
+        const total = traveled + remaining;
+        
+        let percentSafe = 0;
+        if (total > 0) {
+            percentSafe = (traveled / total) * 100;
+            // Min/Max clamping for visual clarity (so label doesn't disappear)
+            percentSafe = Math.max(10, Math.min(90, percentSafe));
+        }
+
+        // 2. Identify Stop Location Name (Simple logic or fallback)
+        // Ideally backend provides this, but we can fallback to "Km X"
+        const stopLocationName = `Km ${Math.round(traveled)}`; 
 
         return `
     <div class="infeasibility-card">
-        <div class="inf-header">
-            <div class="inf-icon-wrapper">
-                <span>😓</span>
+        <!-- Header: Empathetic & Clear -->
+        <div class="md3-inf-header">
+            <span class="icon material-symbols-rounded md3-inf-icon">battery_alert</span>
+            <div class="md3-inf-content">
+                <div class="md3-inf-title">Pin không đủ cho lộ trình này</div>
+                <div class="md3-inf-subtitle">
+                    Xe sẽ dừng tại <b>${stopLocationName}</b>, còn cách đích ${Math.round(remaining)}km.
+                </div>
             </div>
-            <div class="inf-title">Rất tiếc, xe không đủ điện!</div>
-            <div class="inf-subtitle">Pin cạn tại km ${
-              loc.km_from_start || "?"
-            } (còn cách đích ${loc.km_to_destination || "?"}km)</div>
         </div>
 
-        <div class="inf-body">
-            <div class="route-schematic">
-                <div class="route-line-bg"></div>
-                <div class="route-line-active" style="width: ${percentTravel}%"></div>
-                
-                <div class="schematic-point">
-                    <div class="point-dot start">A</div>
-                    <div class="point-label">Xuất phát</div>
+        <!-- Visualization: Linear Progress Bar -->
+        <div class="md3-inf-viz">
+            <div class="md3-progress-labels">
+                <span>Xuất phát</span>
+                <span style="color: var(--md-sys-color-error)">Hết pin (${Math.round(bat.current_percent)}%)</span>
+                <span>Đích</span>
+            </div>
+            <div class="md3-progress-track">
+                <!-- Safe Zone (Green) -->
+                <div class="md3-bar-safe" style="width: ${percentSafe}%">
+                    <!-- Break Point Indicator -->
+                    <div class="md3-break-point" style="right: 0; transform: translateX(50%);"></div>
+                    <div class="md3-break-label" style="right: -4px; transform: translateX(50%); top: -20px;">
+                        !
+                    </div>
                 </div>
-                
-                <div class="schematic-point" style="position: absolute; left: ${percentTravel}%; transform: translateX(-50%);">
-                    <div class="point-dot stop">!</div>
-                    <div class="point-label" style="color:#e11d48; white-space: nowrap; font-weight: 700">Hết pin</div>
-                    <div class="point-val">${loc.km_from_start || "?"}km</div>
-                </div>
+                <!-- Risk Zone (Dashed/Gray) -->
+                <div class="md3-bar-risk"></div>
+            </div>
+        </div>
 
-                <div class="schematic-point">
-                    <div class="point-dot end">B</div>
-                    <div class="point-label">Đích</div>
-                    <div class="point-val">${tripTotal}km</div>
-                </div>
+        <!-- Actions: Material Chips -->
+        <div class="md3-actions">
+            <!-- Primary: Simulate 100% Battery -->
+            <div class="md3-chip primary" onclick="applySuggestion('Sạc đầy 100%', 0)">
+                <span class="icon material-symbols-rounded" style="font-size:18px">bolt</span>
+                Giả lập Pin 100%
             </div>
 
-            <div class="inf-stats">
-                <div class="inf-stat-box">
-                    <div class="inf-stat-label">Pin hiện tại</div>
-                    <div class="inf-stat-val">${bat.current_percent || 0}%</div>
-                </div>
-                <div class="inf-stat-box" style="background: #fff1f2; border-color: #fecaca;">
-                    <div class="inf-stat-label">Cần tối thiểu</div>
-                    <div class="inf-stat-val bad">~${Math.round(
-                      (bat.current_percent || 0) + (bat.deficit_percent || 0)
-                    )}%</div>
-                </div>
+            <!-- Secondary: Find Charging Stations (if location available) -->
+            ${errorData.nearest_station_to_failure ? `
+            <div class="md3-chip secondary" onclick="panToNearestStation(${errorData.nearest_station_to_failure.lat}, ${errorData.nearest_station_to_failure.lon})">
+                <span class="icon material-symbols-rounded" style="font-size:18px">ev_station</span>
+                Thêm trạm sạc
             </div>
+            ` : ''}
 
-            <div class="inf-suggestions">
-                <div class="inf-sug-title">💡 Gợi ý xử lý:</div>
-                <div style="display: flex; flex-wrap: wrap;">
-                    <span class="inf-chip" onclick="applySuggestion('Sạc đầy 100%', 0)">
-                        <span class="inf-chip-icon">🔋</span> Sạc đầy 100% & Thử lại
-                    </span>
-                    <span class="inf-chip" onclick="adjustBattery()">
-                        <span class="inf-chip-icon">⚙️</span> Điều chỉnh thông số xe
-                    </span>
-                     ${
-                       errorData.nearest_station_to_failure
-                         ? `
-                    <span class="inf-chip" onclick="panToNearestStation(${errorData.nearest_station_to_failure.lat}, ${errorData.nearest_station_to_failure.lon})">
-                        <span class="inf-chip-icon">🗺️</span> Xem trạm gần điểm dừng
-                    </span>`
-                         : ""
-                     }
-                </div>
+            <!-- Tertiary: Settings -->
+            <div class="md3-chip tertiary" onclick="adjustBattery()">
+                Cài đặt xe
             </div>
         </div>
     </div>
@@ -3146,10 +3751,8 @@
       }
 
       // === LOADING STEPS MANAGEMENT ===
-      let currentStep = 0;
 
       function resetLoadingSteps() {
-        currentStep = 0;
         document.querySelectorAll(".loading-step").forEach((step) => {
           step.classList.remove("active", "completed", "error");
           step.querySelector(".step-status").textContent = "";
@@ -3596,12 +4199,19 @@
         setTimeout(() => {
           setLoadingStep("step-validate", "completed");
           setLoadingStep("step-geocode-start", "active", "Đang tìm...");
-          document.getElementById(
-            "loadingMessage"
-          ).textContent = `Đang định vị "${start.substring(0, 30)}${
-            start.length > 30 ? "..." : ""
-          }"`;
         }, 500);
+
+        // 1. BẮT ĐẦU POLLING LOG TỪ SERVER
+        const loadingText = document.getElementById('loadingMessage');
+        const statusInterval = setInterval(async () => {
+            try {
+                const res = await fetch('/api/status-log');
+                const data = await res.json();
+                if (data.message && loadingText) {
+                    loadingText.innerText = data.message;
+                }
+            } catch (e) { console.log("Polling error", e); }
+        }, 300);
 
         try {
           const response = await fetch("/route", {
@@ -3624,6 +4234,7 @@
           });
 
           clearInterval(loadingInterval);
+          clearInterval(statusInterval);
 
           // Check HTTP status - IMPROVED: Parse JSON body even for errors
           if (!response.ok) {
@@ -3727,25 +4338,7 @@
 
           // Check for infeasibility in route response
           if (data.infeasibility) {
-            // Priority 1: Use backend-generated Folium map via iframe (safe from XSS blocking)
-            if (data.infeasibility.map_html) {
-              const mapContainer = document.getElementById("map");
-              // Use iframe with srcdoc to isolate and allow Folium scripts to run
-              mapContainer.innerHTML = `
-                <iframe 
-                  srcdoc='${data.infeasibility.map_html.replace(
-                    /'/g,
-                    "&apos;"
-                  )}' 
-                  style="width: 100%; height: 100%; border: none;"
-                  sandbox="allow-scripts allow-same-origin"
-                ></iframe>`;
-            }
-            // Priority 2: Fallback to client-side drawing if backend didn't send map
-            else if (data.infeasibility.traveled_geometry) {
-              drawInfeasibleRouteOnMap(data.infeasibility);
-            }
-
+            drawInfeasibleOnGoong(data.infeasibility);
             showInfeasibilityError(data.infeasibility);
             return;
           }
@@ -3768,8 +4361,11 @@
 
           currentRoutes = data.routes;
 
-          // Update map
-          document.getElementById("map").innerHTML = data.map;
+          // Update map (Sử dụng GoongJS)
+          // document.getElementById("map").innerHTML = data.map; // CŨ
+          if (data.routes && data.routes.length > 0) {
+            drawRouteOnGoong(data.routes, data.nearby_features);
+          }
 
           // Display routes
           displayRoutesList(data.routes);
@@ -3783,6 +4379,7 @@
         } catch (error) {
           console.error("Error:", error);
           clearInterval(loadingInterval);
+          clearInterval(statusInterval);
 
           // Determine error type from exception
           let errorType = "network";
@@ -3819,7 +4416,310 @@
         }
       }
 
-      // === DISPLAY ROUTES LIST ===
+      // === HELPER: FORMAT DURATION ===
+      function formatDuration(minutes) {
+        const h = Math.floor(minutes / 60);
+        const m = Math.round(minutes % 60);
+        if (h > 0) {
+            return `${h} giờ ${m > 0 ? m + ' phút' : ''}`;
+        }
+        return `${m} phút`;
+      }
+
+      // === HELPER: PROCESS INSTRUCTIONS (Grouping for Progressive Disclosure) ===
+      function processInstructions(rawSteps) {
+        if (!rawSteps || rawSteps.length === 0) return [];
+
+        let cleanedSteps = [];
+        let currentMajorStep = null;
+
+        rawSteps.forEach((step) => {
+            // Ensure data types
+            let dist = step.raw_distance || 0;
+            let text = step.text || "";
+            let icon = step.icon || "navigation";
+            let maneuverType = step.maneuver ? step.maneuver.type : "";
+            
+            // Normalize icon
+            const iconName = icon.toLowerCase();
+            
+            // Determine Step Type
+            const isStraight = iconName === "straight" || iconName === "navigation";
+            const isTurn = !isStraight;
+            const isLong = dist >= 3000; // 3km threshold for "Long Straight"
+            const isEndpoint = iconName === "trip_origin" || iconName === "flag" || maneuverType === "arrive" || maneuverType === "depart";
+            
+            // Major Step Condition
+            const isMajor = isTurn || isLong || isEndpoint || !currentMajorStep;
+
+            if (isMajor) {
+                // Finalize previous major step distance text if needed
+                if (currentMajorStep) {
+                    currentMajorStep.distance = (currentMajorStep.raw_distance >= 1000) 
+                        ? (currentMajorStep.raw_distance/1000).toFixed(1) + " km" 
+                        : Math.round(currentMajorStep.raw_distance) + " m";
+                }
+
+                // Create new Major Step
+                currentMajorStep = { 
+                    ...step, 
+                    raw_distance: dist, 
+                    sub_steps: [] 
+                };
+                cleanedSteps.push(currentMajorStep);
+            } else {
+                // It's a Minor Step (Short Straight) -> Add to sub_steps
+                currentMajorStep.sub_steps.push({
+                    text: text,
+                    distance: (dist >= 1000) ? (dist/1000).toFixed(1) + " km" : Math.round(dist) + " m",
+                    raw_distance: dist,
+                    icon: icon
+                });
+
+                // Accumulate distance/duration to Major Step
+                currentMajorStep.raw_distance += dist;
+                currentMajorStep.duration = (currentMajorStep.duration || 0) + (step.duration || 0);
+            }
+        });
+
+        // Finalize last step
+        if (currentMajorStep) {
+            currentMajorStep.distance = (currentMajorStep.raw_distance >= 1000) 
+                ? (currentMajorStep.raw_distance/1000).toFixed(1) + " km" 
+                : Math.round(currentMajorStep.raw_distance) + " m";
+        }
+
+        return cleanedSteps;
+      }
+
+      // === BUILD INTEGRATED TIMELINE (With Progressive Disclosure) ===
+      function buildIntegratedTimeline(route) {
+        let html = '<div class="integrated-timeline">';
+        let currentKm = 0;
+        const events = route.travel_events || [];
+        let eventIdx = 0;
+
+        // Process instructions first
+        const instructions = processInstructions(route.instructions || []);
+
+        // Start Node
+        html += `
+            <div class="timeline-node instruction">
+                <div class="node-icon-container">
+                    <span class="icon material-symbols-rounded node-icon" style="color:#1a73e8">trip_origin</span>
+                </div>
+                <div class="node-content">
+                    <div class="event-title">Xuất phát</div>
+                    <div class="instruction-text">Bắt đầu hành trình</div>
+                </div>
+            </div>
+        `;
+
+        // Iterate instructions and interleave events
+        instructions.forEach((step, index) => {
+            const stepDist = (step.raw_distance || 0) / 1000;
+            const nextKm = currentKm + stepDist;
+
+            // Check for events in this segment
+            while (eventIdx < events.length && events[eventIdx].km <= nextKm + 0.5) { // 0.5km buffer
+                const evt = events[eventIdx];
+                let icon = "place";
+                let typeClass = "";
+                let costHtml = "";
+                let detailsHtml = "";
+
+                if (evt.type === 'charging') { 
+                    icon = 'ev_station'; 
+                    typeClass = 'event-charging';
+                    if (evt.details) {
+                        detailsHtml = `<span style="color:#ea4335">⚡ Sạc ${evt.details.from_percent}% ➝ ${evt.details.to_percent}% (${evt.details.charge_time_min}p)</span>`;
+                    }
+                }
+                else if (evt.type === 'toll') { 
+                    icon = 'toll'; 
+                    typeClass = 'event-toll'; 
+                    costHtml = `<span class="event-cost">${formatCurrency(evt.cost)}</span>`; 
+                }
+                else if (evt.type === 'ferry') { 
+                    icon = 'directions_boat'; 
+                    typeClass = 'event-ferry'; 
+                    costHtml = `<span class="event-cost">${formatCurrency(evt.cost)}</span>`; 
+                }
+                else if (evt.type === 'highway_stop') { 
+                    icon = 'local_gas_station'; 
+                }
+
+                // Insert Event Node
+                html += `
+                    <div class="timeline-node ${typeClass}">
+                        <div class="node-icon-container">
+                            <span class="icon material-symbols-rounded node-icon">${icon}</span>
+                        </div>
+                        <div class="node-content">
+                            <div class="event-card">
+                                <div class="event-title">${evt.name}</div>
+                                <div class="event-meta">
+                                    <span>Km ${evt.km.toFixed(1)}</span>
+                                    ${costHtml}
+                                    ${detailsHtml}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                eventIdx++;
+            }
+
+            // Insert Major Instruction Node
+            const instructionIcon = step.icon || "navigation";
+            // Unique ID for toggle
+            const subStepsId = `sub-steps-${index}-${Date.now()}`;
+            
+            html += `
+                <div class="timeline-node instruction">
+                    <div class="node-icon-container">
+                        <span class="icon material-symbols-rounded node-icon">${instructionIcon}</span> 
+                    </div>
+                    <div class="node-content">
+                        <div class="instruction-text">${step.text}</div>
+                        <div class="instruction-dist">${step.distance}</div>
+                        
+                        <!-- Sub-steps Accordion -->
+                        ${step.sub_steps && step.sub_steps.length > 0 ? `
+                            <div class="sub-steps-toggle" onclick="toggleSubSteps('${subStepsId}', this)">
+                                <span class="icon material-symbols-rounded" style="font-size:14px; margin-right:4px;">expand_more</span>
+                                Xem ${step.sub_steps.length} bước chi tiết
+                            </div>
+                            <div class="sub-steps-container" id="${subStepsId}">
+                                ${step.sub_steps.map(sub => `
+                                    <div class="sub-step-item">
+                                        <div class="dot"></div>
+                                        <div style="flex:1">${sub.text}</div>
+                                        <div class="sub-step-dist">${sub.distance}</div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+
+            currentKm = nextKm;
+        });
+
+        // End Node
+        html += `
+            <div class="timeline-node instruction">
+                <div class="node-icon-container">
+                    <span class="icon material-symbols-rounded node-icon" style="color:#ea4335">flag</span>
+                </div>
+                <div class="node-content">
+                    <div class="event-title">Đến đích</div>
+                    <div class="instruction-text">Bạn đã đến nơi</div>
+                </div>
+            </div>
+        `;
+
+        html += '</div>';
+        return html;
+      }
+
+      // === TOGGLE SUB STEPS ===
+      function toggleSubSteps(id, btn) {
+        const container = document.getElementById(id);
+        const icon = btn.querySelector('.icon');
+        
+        // Stop propagation to prevent card collapse (if nested)
+        if (event) event.stopPropagation();
+
+        if (container.classList.contains('open')) {
+            container.classList.remove('open');
+            btn.innerHTML = `<span class="icon material-symbols-rounded" style="font-size:14px">expand_more</span> Xem ${container.children.length} bước chi tiết`;
+        } else {
+            container.classList.add('open');
+            btn.innerHTML = `<span class="icon material-symbols-rounded" style="font-size:14px">expand_less</span> Thu gọn`;
+        }
+      }
+
+      // === DYNAMIC COST TOOLTIP (Fixed Positioning) ===
+      let activeTooltip = null;
+
+      function toggleCostTooltip(event, container) {
+          event.stopPropagation();
+          
+          // If clicking the same container, toggle off
+          if (activeTooltip && activeTooltip.dataset.triggerId === container.dataset.id) {
+              removeActiveTooltip();
+              return;
+          }
+          
+          removeActiveTooltip();
+
+          // Get content source
+          const source = container.querySelector('.cost-tooltip');
+          if (!source) return;
+
+          // Assign a unique ID to container if not present
+          if (!container.dataset.id) container.dataset.id = Date.now() + Math.random();
+
+          // Create dynamic tooltip
+          const tooltip = document.createElement('div');
+          tooltip.className = 'dynamic-cost-tooltip';
+          tooltip.innerHTML = source.innerHTML;
+          tooltip.dataset.triggerId = container.dataset.id;
+          document.body.appendChild(tooltip);
+          
+          
+          // Position
+          const rect = container.getBoundingClientRect();
+          const tooltipRect = tooltip.getBoundingClientRect();
+          
+          // Position to the right of the icon/container
+          let top = rect.top + (rect.height / 2) - (tooltipRect.height / 2);
+          let left = rect.right + 12; // 12px gap
+          
+          // Boundary check
+          const viewportWidth = window.innerWidth;
+          const viewportHeight = window.innerHeight;
+
+          if (left + tooltipRect.width > viewportWidth) {
+             left = rect.left - tooltipRect.width - 12;
+             tooltip.classList.add('flipped'); 
+             // Add CSS style for flipped arrow if needed, 
+             // e.g., .dynamic-cost-tooltip.flipped::before { left: 100%; right: auto; border-color: transparent transparent transparent white; }
+          }
+          
+          if (top + tooltipRect.height > viewportHeight) {
+             top = viewportHeight - tooltipRect.height - 10;
+          }
+          if (top < 0) top = 10;
+          
+          tooltip.style.top = `${top}px`;
+          tooltip.style.left = `${left}px`;
+          
+          activeTooltip = tooltip;
+          
+          // Add click outside listener
+          setTimeout(() => {
+              document.addEventListener('click', handleOutsideClick);
+          }, 0);
+      }
+
+      function removeActiveTooltip() {
+          if (activeTooltip) {
+              activeTooltip.remove();
+              activeTooltip = null;
+              document.removeEventListener('click', handleOutsideClick);
+          }
+      }
+
+      function handleOutsideClick(e) {
+          if (activeTooltip && !activeTooltip.contains(e.target)) {
+              removeActiveTooltip();
+          }
+      }
+
+      // === DISPLAY ROUTES LIST (Progressive Disclosure) ===
       function displayRoutesList(routes) {
         const container = document.getElementById("routesList");
         container.innerHTML = "";
@@ -3828,359 +4728,111 @@
           const isBest = route.is_best === true;
           const card = document.createElement("div");
           card.className = "route-card" + (isBest ? " best" : "");
+          
+          // Toggle Expansion Logic
           card.onclick = (e) => {
-            // Don't trigger if clicking on tabs
-            if (
-              !e.target.closest(".card-tabs") &&
-              !e.target.closest(".tab-content")
-            ) {
-              showRouteDetail(index);
+            const details = card.querySelector('.route-details-container');
+            const wasOpen = details.classList.contains('open');
+            
+            // Close others (Accordion effect)
+            document.querySelectorAll('.route-details-container').forEach(el => el.classList.remove('open'));
+            document.querySelectorAll('.route-card').forEach(el => el.classList.remove('active'));
+
+            if (!wasOpen) {
+                details.classList.add('open');
+                card.classList.add('active');
+                showRouteDetail(index); // Update Map
             }
           };
 
-          // Calculate reasons for best route
-          let reasonHtml = "";
-          if (isBest && routes.length > 1) {
-            const otherRoutes = routes.filter((r, i) => i !== index);
-            const avgTime =
-              otherRoutes.reduce((sum, r) => sum + r.metrics.total_time, 0) /
-              otherRoutes.length;
-            const avgCharges =
-              otherRoutes.reduce((sum, r) => sum + r.metrics.num_charges, 0) /
-              otherRoutes.length;
-            const avgDistance =
-              otherRoutes.reduce(
-                (sum, r) => sum + r.metrics.total_distance,
-                0
-              ) / otherRoutes.length;
-
-            const timeDiff = avgTime - route.metrics.total_time;
-            const chargesDiff = avgCharges - route.metrics.num_charges;
-            const distanceDiff = avgDistance - route.metrics.total_distance;
-
-            const reasons = [];
-            if (timeDiff > 5)
-              reasons.push(`Nhanh hơn ${timeDiff.toFixed(0)} phút`);
-            if (chargesDiff > 0)
-              reasons.push(`Ít hơn ${chargesDiff.toFixed(0)} lần sạc`);
-            if (distanceDiff > 1)
-              reasons.push(`Ngắn hơn ${distanceDiff.toFixed(1)} km`);
-
-            if (reasons.length > 0) {
-              reasonHtml = `
-                <div class="reason-box">
-                  <div class="reason-title">Tại sao tối ưu nhất?</div>
-                  <div class="reason-list">${reasons.join("<br>")}</div>
+          // --- 1. Summary Header (Always Visible) ---
+          const summaryHtml = `
+            <div class="card-summary">
+                <div class="summary-header">
+                    <div class="route-time-big">
+                        ${formatDuration(route.metrics.total_time)}
+                        ${(route.metrics.toll_cost > 0 || route.metrics.ferry_cost > 0) ? `<span style="font-size: 0.75rem; color: #70757A; font-weight: 400; margin-left: 8px; vertical-align: middle;">Có thu phí</span>` : ''}
+                    </div>
+                    ${isBest ? `
+                    <div class="best-badge">
+                        <span class="icon material-symbols-rounded" style="font-size:14px">thumb_up</span>
+                        Tốt nhất
+                    </div>` : ''}
                 </div>
-              `;
-            }
-          }
-
-          // Build charging stops HTML
-          let chargingHtml = "";
-          if (route.charging_stops && route.charging_stops.length > 0) {
-            chargingHtml = route.charging_stops
-              .map(
-                (s, i) => `
-              <div class="charging-item">
-                <div class="charging-marker">${i + 1}</div>
-                <div class="charging-info">
-                  <div class="charging-name">${s.station.name}</div>
-                  <div class="charging-details">
-                    <span>Thời gian: ${s.charge_time} phút</span>
-                    <span>Năng lượng: ${s.energy_kwh || "?"} kWh</span>
-                    ${
-                      s.charging_cost
-                        ? `<span class="charging-cost">${formatCurrency(
-                            s.charging_cost
-                          )}</span>`
-                        : ""
-                    }
-                  </div>
+                
+                <!-- Row 2: Physical Metrics -->
+                <div class="summary-metrics">
+                    <div class="metric-item">
+                        <span class="icon material-symbols-rounded" style="font-size:16px">distance</span>
+                        ${Math.round(route.metrics.total_distance)} km
+                    </div>
+                    <div class="metric-dot"></div>
+                    <div class="metric-item">
+                        <span class="icon material-symbols-rounded" style="font-size:16px">ev_station</span>
+                        ${route.metrics.num_charges} lần sạc
+                    </div>
+                    <div class="metric-dot"></div>
+                    <div class="metric-item">
+                        <span class="icon material-symbols-rounded" style="font-size:16px">battery_charging_full</span>
+                        ${route.metrics.final_battery}% pin
+                    </div>
                 </div>
-              </div>
-            `
-              )
-              .join("");
-          } else {
-            chargingHtml =
-              '<div class="no-charging">Không cần sạc trên đường đi</div>';
-          }
 
-          // Build segments HTML
-          let segmentsHtml = "";
-          if (route.segments && route.segments.length > 0) {
-            segmentsHtml = route.segments
-              .map(
-                (seg, i) => `
-              <div class="segment-item">
-                <div class="segment-number">${i + 1}</div>
-                <div class="segment-name">${seg.road}</div>
-                <div class="segment-stats">
-                  <div class="segment-distance">${seg.distance_text}</div>
-                  <div class="segment-duration">${seg.duration_text}</div>
-                </div>
-              </div>
-            `
-              )
-              .join("");
-          } else {
-            segmentsHtml =
-              '<p style="color: var(--gray-500); text-align: center; padding: 20px;">Không có dữ liệu đường đi</p>';
-          }
-
-          // Build directions HTML with Show More/Less
-          let directionsHtml = "";
-          if (route.instructions && route.instructions.length > 0) {
-            const showLimit = 10;
-            const totalSteps = route.instructions.length;
-            const hasMore = totalSteps > showLimit;
-
-            directionsHtml = route.instructions
-              .map(
-                (inst, i) => `
-              <div class="direction-item ${
-                i >= showLimit ? "hidden-step" : ""
-              }" data-step-index="${i}">
-                <div class="direction-step">${i + 1}</div>
-                <div class="direction-info">
-                  <div class="direction-text">${inst.text}</div>
-                  <div class="direction-meta">${inst.distance} - ${
-                  inst.duration
-                }</div>
-                </div>
-              </div>
-            `
-              )
-              .join("");
-
-            if (hasMore) {
-              directionsHtml += `
-                <button class="show-more-btn" onclick="toggleDirections(${index}, this)" data-expanded="false">
-                  <span>Xem thêm ${totalSteps - showLimit} bước nữa</span>
-                  <span>▼</span>
-                </button>
-              `;
-            }
-          } else {
-            directionsHtml =
-              '<p style="color: var(--gray-500); text-align: center; padding: 20px;">Không có chỉ dẫn chi tiết</p>';
-          }
-
-          // Build comparison context for non-best routes
-          let comparisonHtml = "";
-          if (!isBest && routes.length > 1) {
-            const bestRoute = routes.find((r) => r.is_best);
-            if (bestRoute) {
-              const timeDiff =
-                route.metrics.total_time - bestRoute.metrics.total_time;
-              const distDiff =
-                route.metrics.total_distance - bestRoute.metrics.total_distance;
-              const chargeDiff =
-                route.metrics.num_charges - bestRoute.metrics.num_charges;
-
-              const comparisons = [];
-              if (Math.abs(timeDiff) >= 1) {
-                const cls = timeDiff > 0 ? "worse" : "better";
-                const sign = timeDiff > 0 ? "+" : "";
-                comparisons.push(
-                  `<span class="comparison-item ${cls}"><span>⏱️</span>${sign}${timeDiff.toFixed(
-                    0
-                  )} phút</span>`
-                );
-              }
-              if (Math.abs(distDiff) >= 0.5) {
-                const cls = distDiff > 0 ? "worse" : "better";
-                const sign = distDiff > 0 ? "+" : "";
-                comparisons.push(
-                  `<span class="comparison-item ${cls}"><span>📏</span>${sign}${distDiff.toFixed(
-                    1
-                  )} km</span>`
-                );
-              }
-              if (chargeDiff !== 0) {
-                const cls = chargeDiff > 0 ? "worse" : "better";
-                const sign = chargeDiff > 0 ? "+" : "";
-                comparisons.push(
-                  `<span class="comparison-item ${cls}"><span>⚡</span>${sign}${chargeDiff} lần sạc</span>`
-                );
-              }
-
-              if (comparisons.length > 0) {
-                comparisonHtml = `<div class="comparison-context">So với tối ưu: ${comparisons.join(
-                  ""
-                )}</div>`;
-              }
-            }
-          }
-
-          // Cost summary with ferry cost
-          let costHtml = "";
-          const hasCost = route.metrics.total_cost > 0;
-          const ferryCost = route.metrics.ferry_cost || 0;
-
-          // === BUILD FILTER FEEDBACK HTML ===
-          let filterFeedbackHtml = "";
-          if (route.filter_feedback && route.filter_feedback.length > 0) {
-            filterFeedbackHtml = '<div class="filter-feedback-container">';
-            route.filter_feedback.forEach((fb) => {
-              filterFeedbackHtml += `
-                <div class="filter-badge ${fb.type}">
-                  <span class="badge-icon">${fb.icon}</span>
-                  <span>${fb.text}</span>
-                </div>
-              `;
-            });
-            filterFeedbackHtml += "</div>";
-          }
-
-          if (hasCost) {
-            costHtml = `
-              <div class="cost-summary">
-                <div class="cost-row">
-                  <span class="cost-label">⚡ Tiền sạc</span>
-                  <span class="cost-value">${formatCurrency(
-                    route.metrics.charging_cost || 0
-                  )}</span>
-                </div>
-                <div class="cost-row">
-                  <span class="cost-label">🚰 Phí cầu đường</span>
-                  <span class="cost-value">${formatCurrency(
-                    route.metrics.toll_cost || 0
-                  )}</span>
-                </div>
-                ${
-                  ferryCost > 0
-                    ? `
-                <div class="cost-row">
-                  <span class="cost-label">🚢 Phí phà</span>
-                  <span class="cost-value">${formatCurrency(ferryCost)}</span>
-                </div>
-                `
-                    : ""
-                }
-                <div class="cost-row">
-                  <span class="cost-label">Tổng chi phí</span>
-                  <span class="cost-value total">${formatCurrency(
-                    route.metrics.total_cost
-                  )}</span>
-                </div>
-              </div>
-            `;
-          } else {
-            costHtml = `
-              <div class="cost-summary" style="background: #D1FAE5; border-color: #6EE7B7;">
-                <div class="free-route-badge">
-                  <span>✅</span>
-                  <span>Miễn phí cầu đường & phà</span>
-                </div>
-              </div>
-            `;
-          }
-
-          card.innerHTML = `
-            <!-- Card Header -->
-            <div class="card-header">
-              <span class="route-name">${route.name}</span>
-              ${isBest ? '<span class="badge">Tốt nhất</span>' : ""}
-            </div>
-
-            <!-- Stats Grid -->
-            <div class="stats-grid">
-              <div class="stat-item">
-                <div class="stat-label">Quãng đường</div>
-                <div class="stat-value">${route.metrics.total_distance} km</div>
-              </div>
-              <div class="stat-item">
-                <div class="stat-label">Thời gian</div>
-                <div class="stat-value">${route.metrics.total_time} phút</div>
-              </div>
-              <div class="stat-item">
-                <div class="stat-label">Số lần sạc</div>
-                <div class="stat-value">${route.metrics.num_charges}</div>
-              </div>
-              <div class="stat-item">
-                <div class="stat-label">Pin còn lại</div>
-                <div class="stat-value">${route.metrics.final_battery}%</div>
-              </div>
-            </div>
-
-            <!-- Comparison Context (for non-best routes) -->
-            ${comparisonHtml}
-
-            <!-- Filter Feedback (hiệu quả bộ lọc) -->
-            ${filterFeedbackHtml}
-
-            <!-- Cost Summary -->
-            ${costHtml}
-
-            <!-- Tabs -->
-            <div class="card-tabs">
-              <button class="card-tab active" data-tab="overview" onclick="switchTab(${index}, 'overview')">Tổng quan</button>
-              <button class="card-tab" data-tab="events" onclick="switchTab(${index}, 'events')">Sự kiện</button>
-              <button class="card-tab" data-tab="charging" onclick="switchTab(${index}, 'charging')">Trạm sạc</button>
-              <button class="card-tab" data-tab="directions" onclick="switchTab(${index}, 'directions')">Chỉ dẫn</button>
-            </div>
-
-            <!-- Tab Contents -->
-            <div class="tab-content active" data-tab="overview">
-              <div class="overview-item">
-                <span class="overview-label">Tổng quãng đường</span>
-                <span class="overview-value">${
-                  route.metrics.total_distance
-                } km</span>
-              </div>
-              <div class="overview-item">
-                <span class="overview-label">Tổng thời gian</span>
-                <span class="overview-value">${
-                  route.metrics.total_time
-                } phút</span>
-              </div>
-              <div class="overview-item">
-                <span class="overview-label">Số lần sạc</span>
-                <span class="overview-value">${
-                  route.metrics.num_charges
-                } lần</span>
-              </div>
-              <div class="overview-item">
-                <span class="overview-label">Pin cuối hành trình</span>
-                <span class="overview-value">${
-                  route.metrics.final_battery
-                }%</span>
-              </div>
-              ${
-                route.metrics.total_cost
-                  ? `
-              <div class="overview-item">
-                <span class="overview-label">Tổng chi phí ước tính</span>
-                <span class="overview-value">${formatCurrency(
-                  route.metrics.total_cost
-                )}</span>
-              </div>
-              `
-                  : ""
-              }
-              ${reasonHtml}
-            </div>
-
-            <div class="tab-content" data-tab="events">
-              ${buildTravelEventsHtml(route.travel_events)}
-            </div>
-
-            <div class="tab-content" data-tab="charging">
-              <div class="charging-timeline">
-                ${chargingHtml}
-              </div>
-            </div>
-
-            <div class="tab-content" data-tab="directions">
-              ${directionsHtml}
+                <!-- Row 3: Financial Metrics (Vertical Stack) -->
+                ${route.metrics.total_cost > 0 ? `
+                <div class="summary-metrics" style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #e0e0e0;">
+                    <div class="metric-item cost-container" onclick="toggleCostTooltip(event, this)" style="width: 100%;">
+                        <span class="icon material-symbols-rounded" style="font-size:18px; color: #188038">payments</span>
+                        <span style="color: #188038; font-weight:700; font-size: 1rem; margin-right: auto;">${formatCurrency(route.metrics.total_cost)}</span>
+                        
+                        <span style="font-size: 0.8rem; color: #1a73e8; font-weight: 500;">Chi tiết</span>
+                        <span class="icon material-symbols-rounded info-icon" style="font-size: 16px; margin-left: 2px; color: #1a73e8;">info</span>
+                        
+                        <!-- Cost Breakdown Tooltip -->
+                        <div class="cost-tooltip">
+                            <div class="cost-row">
+                                <span class="icon material-symbols-rounded" style="color: #188038">ev_station</span>
+                                <span class="label">Phí sạc</span>
+                                <span class="value">${formatCurrency(route.metrics.charging_cost)}</span>
+                            </div>
+                            ${route.metrics.toll_cost > 0 ? `
+                            <div class="cost-row">
+                                <span class="icon material-symbols-rounded" style="color: #F29900">toll</span>
+                                <span class="label">Cầu đường</span>
+                                <span class="value">${formatCurrency(route.metrics.toll_cost)}</span>
+                            </div>` : ''}
+                            ${route.metrics.ferry_cost > 0 ? `
+                            <div class="cost-row">
+                                <span class="icon material-symbols-rounded" style="color: #1967D2">directions_boat</span>
+                                <span class="label">Vé phà</span>
+                                <span class="value">${formatCurrency(route.metrics.ferry_cost)}</span>
+                            </div>` : ''}
+                            <div class="divider"></div>
+                            <div class="disclaimer">Chi phí ước tính theo thời gian thực</div>
+                        </div>
+                    </div>
+                </div>` : ''}
             </div>
           `;
 
+          // --- 2. Details Container (Hidden by Default) ---
+          const timelineHtml = buildIntegratedTimeline(route);
+          
+          const detailsHtml = `
+            <div class="route-details-container">
+                <div class="details-toggle">
+                    <span class="icon material-symbols-rounded">expand_less</span>
+                    Chi tiết hành trình
+                </div>
+                ${timelineHtml}
+            </div>
+          `;
+
+          card.innerHTML = summaryHtml + detailsHtml;
           container.appendChild(card);
         });
       }
+
 
       // === ENTER KEY SUPPORT ===
       document
