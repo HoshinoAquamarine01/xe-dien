@@ -298,7 +298,7 @@ def format_turn_by_turn(steps):
 # ==============================================================================
 #  HÀM LẤY ROUTE TỪ GOONG API (API CHÍNH)
 # ==============================================================================
-def get_route_from_goong(start_coords, end_coords, vehicle='car', user_filters=None):
+def get_route_from_goong(start_coords, end_coords, vehicle='car', user_filters=None, force_vn_waypoint=False):
     """
     Lấy route từ Goong Direction API - Tối ưu cho Việt Nam.
     
@@ -325,6 +325,21 @@ def get_route_from_goong(start_coords, end_coords, vehicle='car', user_filters=N
             "api_key": GOONG_API_KEY
         }
 
+        # --- FIX: FORCE VIETNAM ROUTE (Tránh đi qua Lào/Campuchia) ---
+        # Nguyên nhân: Với lộ trình Bắc - Nam dài, thuật toán thường chọn đường qua Lào/Cam vì ngắn hơn.
+        # Giải pháp: Nếu lộ trình đi qua miền Trung (vượt qua vĩ độ 16), chèn điểm neo tại Đà Nẵng.
+        
+        lat_min = min(start_coords[0], end_coords[0])
+        lat_max = max(start_coords[0], end_coords[0])
+        
+        # Kiểm tra nếu lộ trình băng qua miền Trung (Vĩ độ 16 - Đà Nẵng)
+        # Và khoảng cách đủ xa (> 4 độ vĩ tuyến ~ 450km) để tránh ảnh hưởng lộ trình ngắn
+        if lat_min < 15.0 and lat_max > 17.0:
+            print("   🛡️ Phát hiện lộ trình Bắc - Nam dài: Thêm Waypoint Đà Nẵng để giữ lộ trình trong Việt Nam.")
+            # Tọa độ Đà Nẵng (Cầu Rồng): 16.06104, 108.22690
+            # Goong API hỗ trợ tham số 'waypoints'
+            params['waypoints'] = "16.06104,108.22690"
+
         # If user provided filters (avoid), pass them to Goong API when supported.
         # Note: Goong's API may use a different keyword (e.g., 'avoid' or 'exclude') and value names.
         # We'll attempt a sensible mapping and keep it safe: if user_filters present, add 'avoid' param as pipe-separated list.
@@ -339,6 +354,11 @@ def get_route_from_goong(start_coords, end_coords, vehicle='car', user_filters=N
             if avoids:
                 params['avoid'] = '|'.join(avoids)
         
+        # Force a Vietnam waypoint if requested (keeps route inside VN borders)
+        if force_vn_waypoint:
+            params['waypoints'] = "16.06104,108.22690"
+            print("   🛡️ Forcing Vietnam waypoint for Goong request")
+
         print(f"🗺️ Đang gọi Goong Direction API...")
         print(f"   📍 Origin: {origin}")
         print(f"   📍 Destination: {destination}")
@@ -622,6 +642,43 @@ def get_route(start_coords, end_coords, options=None):
                         print("⚠️ Mapbox could not find a filter-respecting alternative — keeping Goong route and flagging warnings")
         except Exception as e:
             print(f"⚠️ Warning while validating filters against Goong route: {e}")
+        # Validate that the route stays within Vietnam; if not, request with forced VN waypoint
+        def route_outside_vietnam(route):
+            coords = []
+            geom = route.get('geometry')
+            if isinstance(geom, str) and geom:
+                try:
+                    coords = polyline.decode(geom)
+                except Exception:
+                    coords = []
+            elif isinstance(geom, list) and geom:
+                coords = geom
+            # Also attempt steps if no geometry
+            if not coords and route.get('steps'):
+                for s in route['steps']:
+                    try:
+                        coords.extend(polyline.decode(s.get('geometry', '')))
+                    except Exception:
+                        continue
+            if not coords:
+                return False
+            # Vietnam bounding box (conservative mainland): lat 8..23.6 lon 102..110.6
+            for lat, lon in coords:
+                if lat < 8.0 or lat > 23.6 or lon < 102.0 or lon > 110.6:
+                    return True
+            return False
+
+        primary_route = routes[0] if routes else None
+        if primary_route and route_outside_vietnam(primary_route):
+            print("⚠️ Route appears to cross outside Vietnam; retrying with forced VN waypoint...")
+            forced = get_route_from_goong(start_coords, end_coords, vehicle='car', user_filters=user_filters, force_vn_waypoint=True)
+            if forced:
+                print("✅ Forced VN waypoint route obtained; using it")
+                ROUTE_CACHE[cache_key] = {'data': forced, 'time': time.time()}
+                return forced, None
+            else:
+                print("⚠️ Forced VN waypoint did not yield alternate route; keeping original route")
+
         # Lưu cache
         ROUTE_CACHE[cache_key] = {'data': routes, 'time': time.time()}
         return routes, None
@@ -632,6 +689,41 @@ def get_route(start_coords, end_coords, options=None):
     
     if mapbox_routes:
         print(f"✅ Mapbox backup thành công!")
+        # Validate VN bounds
+        def route_outside_vietnam(route):
+            coords = []
+            geom = route.get('geometry')
+            if isinstance(geom, str) and geom:
+                try:
+                    coords = polyline.decode(geom)
+                except Exception:
+                    coords = []
+            elif isinstance(geom, list) and geom:
+                coords = geom
+            if not coords and route.get('steps'):
+                for s in route['steps']:
+                    try:
+                        coords.extend(polyline.decode(s.get('geometry', '')))
+                    except Exception:
+                        continue
+            if not coords:
+                return False
+            for lat, lon in coords:
+                if lat < 8.0 or lat > 23.6 or lon < 102.0 or lon > 110.6:
+                    return True
+            return False
+
+        primary_route = mapbox_routes[0]
+        if primary_route and route_outside_vietnam(primary_route):
+            print("⚠️ Mapbox route crosses outside Vietnam — retrying with forced VN waypoint...")
+            forced_mapbox = get_route_from_mapbox(start_coords, end_coords, user_filters=user_filters, force_vn_waypoint=True)
+            if forced_mapbox:
+                print("✅ Forced Mapbox VN waypoint route obtained; using it")
+                ROUTE_CACHE[cache_key] = {'data': forced_mapbox, 'time': time.time()}
+                return forced_mapbox, None
+            else:
+                print("⚠️ Forced Mapbox waypoint did not yield alternate route; keeping Mapbox route")
+
         # Lưu cache
         ROUTE_CACHE[cache_key] = {'data': mapbox_routes, 'time': time.time()}
         return mapbox_routes, None
@@ -646,7 +738,7 @@ def get_route(start_coords, end_coords, options=None):
     
     return [], "Không thể kết nối đến server định tuyến (Goong/Mapbox)"
 
-def get_route_from_mapbox(start_coords, end_coords, user_filters=None):
+def get_route_from_mapbox(start_coords, end_coords, user_filters=None, force_vn_waypoint=False):
     """
     Hàm gọi Mapbox API khi OSRM thất bại (Backup Plan).
     Trả về định dạng dữ liệu giống hệt OSRM để không phá vỡ logic tính pin.
@@ -668,8 +760,18 @@ def get_route_from_mapbox(start_coords, end_coords, user_filters=None):
         start_str = f"{start_coords[1]},{start_coords[0]}"
         end_str = f"{end_coords[1]},{end_coords[0]}"
         
-        url = f"https://api.mapbox.com/directions/v5/mapbox/driving/{start_str};{end_str}"
-        
+        # Decide whether to insert a Vietnam waypoint to avoid cross-border shortcuts
+        # If the route spans southern to northern Vietnam, we add Đà Nẵng waypoint.
+        lat_min = min(start_coords[0], end_coords[0])
+        lat_max = max(start_coords[0], end_coords[0])
+
+        if force_vn_waypoint or (lat_min < 15.0 and lat_max > 17.0):
+            print("   🛡️ Mapbox: Detected long VN route or forced waypoint — inserting Đà Nẵng waypoint to keep route inside Vietnam.")
+            waypoint_str = "108.22690,16.06104"  # lon,lat for Mapbox
+            url = f"https://api.mapbox.com/directions/v5/mapbox/driving/{start_str};{waypoint_str};{end_str}"
+        else:
+            url = f"https://api.mapbox.com/directions/v5/mapbox/driving/{start_str};{end_str}"
+
         params = {
             "access_token": MAPBOX_ACCESS_TOKEN,
             "geometries": "polyline",  # Lấy encoded polyline giống OSRM
@@ -741,6 +843,29 @@ def get_route_from_mapbox(start_coords, end_coords, user_filters=None):
 #  GHI CHÚ: Đã loại bỏ get_route_single (OSRM) 
 #  Goong API là routing engine chính, Mapbox là fallback
 # ==============================================================================
+
+def decode_full_route_geometry(route_steps):
+    """
+    Tái tạo toàn bộ lộ trình chi tiết từ các bước (steps).
+    Giúp đường đi mượt mà, bám sát mặt đường thực tế thay vì bị gãy khúc.
+    """
+    full_coords = []
+    for step in route_steps:
+        # Giải mã geometry của từng bước nhỏ (độ chính xác cao)
+        step_coords = polyline.decode(step['geometry'])
+        
+        # Nối vào danh sách chính
+        # Lưu ý: Điểm cuối step trước thường trùng điểm đầu step sau, cần xử lý để tránh trùng
+        if full_coords and step_coords:
+            # Nếu điểm đầu step này trùng điểm cuối danh sách -> bỏ qua 1 điểm
+            if full_coords[-1] == step_coords[0]:
+                full_coords.extend(step_coords[1:])
+            else:
+                full_coords.extend(step_coords)
+        else:
+            full_coords.extend(step_coords)
+            
+    return full_coords
 
 def calculate_battery_consumption(distance_km, config):
     kwh_used = (distance_km / 100) * config['consumption']
@@ -1024,24 +1149,24 @@ def calculate_real_path_length(coords_segment):
 # Heuristic (h): Estimated driving time to End
 # ==============================================================================
 
-def get_stations_along_route(route_coords, route_km_cumulative, buffer_km=25.0):
+def get_stations_along_route(route_coords, route_km_cumulative, buffer_km=20.0):
     """
     Tìm tất cả trạm sạc trong bán kính buffer_km dọc theo lộ trình.
     
     Chiến lược "Vây lưới" (Corridor Search):
-    1. Lấy mẫu các điểm trên route (mỗi ~2km cho route ngắn, ~5km cho route dài)
+    1. Lấy mẫu các điểm trên route (mỗi ~10km để tối ưu hiệu năng)
     2. Query KD-Tree tìm trạm gần mỗi điểm mẫu
     3. Project mỗi trạm lên route để tính km_position
     
     UPGRADED:
-    - buffer_km tăng từ 12km lên 25km để bắt trạm sạc xa đường chính (đặc biệt route dài)
-    - sample_interval_km linh hoạt: 5km cho route >500km, 2km cho route ngắn
-    - Thêm fallback: nếu không tìm thấy trạm, sẽ tìm 5 trạm gần nhất bất kể khoảng cách
+    - buffer_km: 20km (tối ưu hóa tìm kiếm)
+    - sample_interval_km: 10km (giảm số lần query KD-Tree)
+    - Clustering: Gom nhóm các trạm gần nhau (<3km) để giảm không gian tìm kiếm A*
     
     Args:
         route_coords: Danh sách tọa độ [(lat, lon), ...]
         route_km_cumulative: Danh sách km tích lũy tại mỗi điểm [0, 0.5, 1.2, ...]
-        buffer_km: Bán kính tìm kiếm (km) - default 25km
+        buffer_km: Bán kính tìm kiếm (km) - default 20km
         
     Returns:
         list: Danh sách trạm đã được sắp xếp theo km_position
@@ -1050,13 +1175,17 @@ def get_stations_along_route(route_coords, route_km_cumulative, buffer_km=25.0):
         print("⚠️ Không có dữ liệu trạm sạc!")
         return []
     
-    # 1. LẤY MẪU ROUTE (linh hoạt theo độ dài route)
+    # 1. LẤY MẪU ROUTE (Tối ưu hóa: Lấy mẫu thưa hơn)
     total_route_km = route_km_cumulative[-1] if route_km_cumulative else 0
-    # Adaptive sampling: lấy mẫu thưa hơn cho route dài để giảm tải CPU
-    if total_route_km > 500:
-        sample_interval_km = 5.0  # Lấy mẫu mỗi 5km cho route dài (HCM-Hà Nội)
+    
+    # Tăng khoảng cách lấy mẫu cho các tuyến dài (Adaptive sampling)
+    # Mục tiêu: giảm số lần KD-Tree query khi route rất dài
+    if total_route_km > 1500:
+        sample_interval_km = 50.0  # Rất dài -> lấy mẫu thưa (50 km)
+    elif total_route_km > 500:
+        sample_interval_km = 10.0  # Dài -> lấy mẫu ~10 km
     else:
-        sample_interval_km = 2.0  # Lấy mẫu mỗi 2km cho route ngắn
+        sample_interval_km = 3.0   # Bình thường -> lấy mẫu ~3 km
     
     sampled_indices = [0]
     last_km = 0
@@ -1073,8 +1202,8 @@ def get_stations_along_route(route_coords, route_km_cumulative, buffer_km=25.0):
     for idx in sampled_indices:
         coord = route_coords[idx]
         try:
-            # Tìm 20 trạm gần nhất tại mỗi điểm mẫu (tăng từ 15)
-            distances, indices = station_tree.query(coord, k=min(20, len(stations)))
+            # Tăng số lượng neighbors (k) lên 50 vì lấy mẫu thưa hơn
+            distances, indices = station_tree.query(coord, k=min(50, len(stations)))
             
             for dist_deg, station_idx in zip(distances, indices):
                 station = stations[station_idx]
@@ -1146,9 +1275,30 @@ def get_stations_along_route(route_coords, route_km_cumulative, buffer_km=25.0):
     # 4. SẮP XẾP THEO KM_POSITION
     candidates.sort(key=lambda x: x['km_position'])
     
-    print(f"🔍 Tìm thấy {len(candidates)} trạm sạc trong hành lang {buffer_km}km")
+    # 5. CLUSTERING (Gom nhóm trạm) - Tối ưu hóa A*
+    filtered_candidates = []
+    if candidates:
+        last_added = candidates[0]
+        filtered_candidates.append(last_added)
+        
+        for current in candidates[1:]:
+            # Nếu trạm này cách trạm trước < 3km
+            dist_between = abs(current['km_position'] - last_added['km_position'])
+            
+            if dist_between < 3.0: 
+                # Chỉ giữ lại trạm tốt hơn (công suất lớn hơn) trong cùng 1 cụm
+                if current['power'] > last_added['power']:
+                    filtered_candidates.pop()
+                    filtered_candidates.append(current)
+                    last_added = current
+                # Nếu không thì bỏ qua current
+            else:
+                filtered_candidates.append(current)
+                last_added = current
+                
+    print(f"🔍 Tìm thấy {len(candidates)} trạm, sau khi gom nhóm còn {len(filtered_candidates)} trạm")
     
-    return candidates
+    return filtered_candidates
 
 
 def build_cumulative_km(route_coords):
@@ -1460,8 +1610,8 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
                             driving_time = (total_dist / AVG_SPEED_KMH) * 60
                             new_g_cost = current.g_cost + driving_time + charge_time
 
-                            # Heuristic (với trọng số 1.15 để tăng tốc cho route dài)
-                            HEURISTIC_WEIGHT = 1.15
+                            # Heuristic (với trọng số 1.5 để tăng tốc cho route dài)
+                            HEURISTIC_WEIGHT = 1.5
                             remaining_km = total_route_km - next_node['km_position']
                             h_cost = ((remaining_km / AVG_SPEED_KMH) * 60) * HEURISTIC_WEIGHT
 
@@ -1488,7 +1638,7 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
             is_backward = next_node['km_position'] < current_node['km_position']
             if is_backward:
                 driving_time = (total_dist / AVG_SPEED_KMH) * 60
-                HEURISTIC_WEIGHT = 1.15
+                HEURISTIC_WEIGHT = 1.5
                 remaining_km = total_route_km - next_node['km_position']
                 h_cost = ((remaining_km / AVG_SPEED_KMH) * 60) * HEURISTIC_WEIGHT
                 est_total = current.g_cost + driving_time + h_cost
@@ -1501,8 +1651,8 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
             driving_time = (total_dist / AVG_SPEED_KMH) * 60
             new_g_cost = current.g_cost + driving_time
 
-            # Heuristic (với trọng số 1.15 để tăng tốc cho route dài)
-            HEURISTIC_WEIGHT = 1.15
+            # Heuristic (với trọng số 1.5 để tăng tốc cho route dài)
+            HEURISTIC_WEIGHT = 1.5
             remaining_km = total_route_km - next_node['km_position']
             h_cost = ((remaining_km / AVG_SPEED_KMH) * 60) * HEURISTIC_WEIGHT
 
@@ -1534,16 +1684,24 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
             else:
                 break
         
+        # 1. Xác định điểm cắt (failure_idx đã được tính ở trên)
+        # failure_idx là index của điểm cuối cùng mà xe có thể đến được
+        
         failure_point = route_coords[failure_idx]
         failure_km = route_km_cumulative[failure_idx]
         
-        # Chia polyline thành traveled (đi được) và remaining (còn lại)
-        traveled_coords = route_coords[:failure_idx+1]
-        remaining_coords = route_coords[failure_idx:]
+        # 2. Cắt mảng tọa độ (Slice List) - GIẢI PHÁP "CẮT BÁNH MÌ"
+        # Nguyên tắc: Chỉ cắt list, không tính toán lại đường đi để đảm bảo khớp nối 100%
         
-        # Encode polylines sử dụng thư viện polyline
-        traveled_geometry = polyline.encode(traveled_coords, 5)
-        remaining_geometry = polyline.encode(remaining_coords, 5)
+        # Đoạn đi được (Traveled): Từ đầu đến điểm chết (lấy cả điểm chết để nối liền)
+        traveled_subset = route_coords[:failure_idx+1]
+        
+        # Đoạn còn lại (Remaining): Từ điểm chết đến cuối
+        remaining_subset = route_coords[failure_idx:]
+        
+        # 3. Encode lại thành Polyline string để gửi xuống Frontend
+        traveled_geometry = polyline.encode(traveled_subset, 5)
+        remaining_geometry = polyline.encode(remaining_subset, 5)
         
         # Tìm trạm sạc gần nhất với điểm hết pin (kể cả không với tới được)
         nearest_station_to_failure = None
@@ -2255,19 +2413,49 @@ def find_route():
         if direct_distance > 1500:
             print(f"CẢNH BÁO: Quãng đường rất xa ({direct_distance:.0f}km)")
         
-        # GET ROUTE
+        # GET ROUTE STRATEGY: MULTI-CANDIDATE COMPETITION (Tier 1 vs Tier 2 Logic)
+        # Thay vì chỉ gọi 1 lần với filters, ta gọi 2 lần:
+        # 1. Route "Clean": Không filter (để tìm đường ngắn nhất/nhanh nhất thực tế)
+        # 2. Route "Avoid": Có filter (nếu user chọn avoid)
+        # Sau đó so sánh kết quả thực tế (Cost, Distance) để chọn ra cái tốt nhất theo Priority.
+        
         route_start = time.time()
         log_status("Đang tìm đường đi tối ưu (Goong API)...")
-        base_routes, route_error = get_route(start_coords, end_coords, data)
+        
+        candidate_routes_raw = []
+        
+        # 1. Luôn lấy Route "Clean" (Baseline) - Bất chấp filters
+        # Đây là ứng viên cho "Shortest Distance" hoặc "Lowest Cost" nếu đường vòng quá đắt
+        print(f"   🏃 Đang tìm Route Baseline (bỏ qua filters)...")
+        clean_routes, _ = get_route(start_coords, end_coords, options={})
+        if clean_routes:
+            for r in clean_routes:
+                r['source_type'] = 'baseline' # Đánh dấu nguồn
+            candidate_routes_raw.extend(clean_routes)
+            
+        # 2. Nếu user có chọn filters, lấy thêm Route "Avoid"
+        user_filters_active = any([
+            data.get('avoid_tolls'), 
+            data.get('avoid_highways'), 
+            data.get('avoid_ferries')
+        ])
+        
+        if user_filters_active:
+            print(f"   🛡️ Đang tìm Route Avoid (tuân thủ filters)...")
+            avoid_routes, _ = get_route(start_coords, end_coords, data)
+            if avoid_routes:
+                for r in avoid_routes:
+                    r['source_type'] = 'avoid_strict'
+                candidate_routes_raw.extend(avoid_routes)
+        
         print(f"Routing API: {time.time() - route_start:.1f}s")
         
-        if not base_routes:
+        if not candidate_routes_raw:
             print(f"❌ Không thể lấy route từ Goong/Mapbox")
-            error_detail = route_error if route_error else "Không rõ nguyên nhân"
             return jsonify({
                 "error": "Không thể tìm đường đi",
                 "error_type": "routing_failed",
-                "details": f"Goong API và Mapbox đều không thể tính toán lộ trình cho tuyến đường này. Lỗi chi tiết: {error_detail}",
+                "details": "Không tìm thấy lộ trình nào khả thi giữa hai điểm này.",
                 "route_info": {
                     "start": start_addr,
                     "end": end_addr,
@@ -2276,47 +2464,66 @@ def find_route():
                 "suggestions": [
                     "Thử lại sau vài giây",
                     "Kiểm tra kết nối internet",
-                    f"Quãng đường {direct_distance:.0f}km - có thể cần chia nhỏ chuyến đi",
                     "Thử nhập địa chỉ khác gần khu vực đó"
                 ]
             }), 400
+            
+        # Deduplicate routes (dựa trên geometry string)
+        unique_candidates = {}
+        for r in candidate_routes_raw:
+            geom = r.get('geometry')
+            # Nếu geometry là list, encode nó để làm key
+            if isinstance(geom, list):
+                try:
+                    geom_key = polyline.encode(geom)
+                except:
+                    geom_key = str(geom)
+            else:
+                geom_key = geom
+                
+            if geom_key not in unique_candidates:
+                unique_candidates[geom_key] = r
+            else:
+                # Nếu đã có, ưu tiên giữ lại cái nào là 'avoid_strict' (để biết nó tuân thủ)
+                if r.get('source_type') == 'avoid_strict':
+                    unique_candidates[geom_key] = r
+                    
+        final_candidates = list(unique_candidates.values())
+        print(f"✅ Có {len(final_candidates)} lộ trình ứng viên để so sánh.")
         
-        print(f"✅ Nhận được {len(base_routes)} route từ Goong API")
-        
-        # TÍNH TOÁN TRẠM SẠC
+        # TÍNH TOÁN TRẠM SẠC CHO TỪNG ỨNG VIÊN
         calc_start = time.time()
         routes_data = []
-        last_infeasibility_error = None  # Lưu lại infeasibility error cuối cùng
+        last_infeasibility_error = None
         
-        for idx, base_route in enumerate(base_routes[:2]):
+        # Build user filters object for A* (để tính warning/penalty)
+        user_filters_dict = {
+            'avoid_tolls': bool(data.get('avoid_tolls', False)),
+            'avoid_ferries': bool(data.get('avoid_ferries', False)),
+            'avoid_highways': bool(data.get('avoid_highways', False))
+        }
+        
+        for idx, base_route in enumerate(final_candidates):
             try:
                 user_config = EV_CONFIG.copy()
+                if data.get('battery_capacity'): user_config['battery_capacity'] = float(data['battery_capacity'])
+                if data.get('consumption'): user_config['consumption'] = float(data['consumption'])
+                if data.get('max_range'): user_config['max_range'] = float(data['max_range'])
+                if data.get('charge_speed_fast'): user_config['charge_speed_fast'] = float(data['charge_speed_fast'])
+                if data.get('min_battery'): user_config['min_battery'] = float(data['min_battery'])
                 
-                if data.get('battery_capacity'):
-                    user_config['battery_capacity'] = float(data['battery_capacity'])
-                if data.get('consumption'):
-                    user_config['consumption'] = float(data['consumption'])
-                if data.get('max_range'):
-                    user_config['max_range'] = float(data['max_range'])
-                if data.get('charge_speed_fast'):
-                    user_config['charge_speed_fast'] = float(data['charge_speed_fast'])
-                if data.get('min_battery'):
-                    user_config['min_battery'] = float(data['min_battery'])
+                # Decode geometry
+                if base_route.get('steps'):
+                    route_coords = decode_full_route_geometry(base_route['steps'])
+                else:
+                    route_coords = polyline.decode(base_route['geometry'])
                 
-                route_coords = polyline.decode(base_route['geometry'])
                 route_distance_km = base_route['distance'] / 1000
+                source_type = base_route.get('source_type', 'unknown')
                 
-                log_status(f"Đang phân tích và tìm trạm sạc cho lộ trình {idx+1}...")
-                print(f"   - Quãng đường: {route_distance_km:.1f}km")
-                print(f"   - Số điểm: {len(route_coords)}")
+                log_status(f"Đang phân tích lộ trình {idx+1}/{len(final_candidates)} ({source_type})...")
                 
-                # Build user filters from request so A* can mark unavoidable events
-                user_filters = {
-                    'avoid_tolls': bool(data.get('avoid_tolls', False)),
-                    'avoid_ferries': bool(data.get('avoid_ferries', False)),
-                    'avoid_highways': bool(data.get('avoid_highways', False))
-                }
-
+                # Chạy A*
                 result, err = a_star_ev_routing(
                     start_coords, 
                     end_coords, 
@@ -2324,11 +2531,12 @@ def find_route():
                     float(data.get('start_battery', 100)), 
                     user_config, 
                     priority='time',
-                    user_filters=user_filters
+                    user_filters=user_filters_dict
                 )
                 
                 if result:
-                    print(f"   ✅ Khả thi: {result['num_charges']} lần sạc, {result['total_time']:.0f}p")
+                    # Gán thêm thông tin gốc để debug
+                    result['source_type'] = source_type
                     
                     raw_steps = base_route.get('steps', [])
                     turn_by_turn = format_turn_by_turn(raw_steps)
@@ -2337,65 +2545,40 @@ def find_route():
                     # === LOGIC MỚI: PHÂN TÍCH HIỆU QUẢ BỘ LỌC ===
                     filter_feedback = []
                     
-                    # 1. Kiểm tra bộ lọc Phí cầu đường
-                    if data.get('avoid_tolls'):
-                        if result['num_tolls'] == 0:
-                            filter_feedback.append({
-                                'type': 'success',
-                                'icon': '💸',
-                                'text': 'Đã tránh hoàn toàn trạm thu phí'
-                            })
-                        else:
-                            filter_feedback.append({
-                                'type': 'warning',
-                                'icon': '⚠️',
-                                'text': f"Vẫn phải qua {result['num_tolls']} trạm thu phí (bắt buộc)"
-                            })
-                    
-                    # 2. Kiểm tra bộ lọc Phà
-                    if data.get('avoid_ferries'):
-                        if result['num_ferries'] == 0:
-                            filter_feedback.append({
-                                'type': 'success',
-                                'icon': '⚓',
-                                'text': 'Đã tránh đi qua phà'
-                            })
-                        else:
-                            filter_feedback.append({
-                                'type': 'warning',
-                                'icon': '⚠️',
-                                'text': f"Vẫn phải đi qua {result['num_ferries']} bến phà"
-                            })
+                    # Tính toán vi phạm
+                    violation_count = 0
+                    if user_filters_dict['avoid_tolls'] and result['num_tolls'] > 0:
+                        violation_count += result['num_tolls']
+                        filter_feedback.append({'type': 'warning', 'icon': '<span class="icon material-symbols-rounded" style="font-size:14px">warning</span>', 'text': f"Vẫn phải qua {result['num_tolls']} trạm thu phí"})
+                    elif user_filters_dict['avoid_tolls']:
+                        filter_feedback.append({'type': 'success', 'icon': '<span class="icon material-symbols-rounded" style="font-size:14px">check_circle</span>', 'text': 'Đã tránh trạm thu phí'})
+                        
+                    if user_filters_dict['avoid_ferries'] and result['num_ferries'] > 0:
+                        violation_count += result['num_ferries']
+                        filter_feedback.append({'type': 'warning', 'icon': '<span class="icon material-symbols-rounded" style="font-size:14px">warning</span>', 'text': f"Vẫn phải qua {result['num_ferries']} phà"})
+                    elif user_filters_dict['avoid_ferries']:
+                        filter_feedback.append({'type': 'success', 'icon': '<span class="icon material-symbols-rounded" style="font-size:14px">directions_boat</span>', 'text': 'Đã tránh phà'})
 
-                    # 3. Kiểm tra bộ lọc Cao tốc
-                    if data.get('avoid_highways'):
-                        filter_feedback.append({
-                            'type': 'info',
-                            'icon': '🛣️',
-                            'text': 'Đã ưu tiên đường dân sinh (tránh cao tốc)'
-                        })
-                    
-                    # KHÔNG gán name/color cố định ở đây - sẽ gán ĐỘNG sau khi sort
+                    result['violation_count'] = violation_count
+
                     routes_data.append({
-                        'name': f'Route {idx + 1}',  # Tạm thời, sẽ đổi sau sort
+                        'name': f'Route {idx + 1}',
                         'route': base_route, 
                         'coords': route_coords,
                         'stops': result['charging_stops'], 
                         'metrics': result, 
                         'feasible': True,
-                        'color': '#94a3b8',  # Tạm thời màu xám, sẽ đổi sau sort
-                        'is_best': False,    # Sẽ xác định sau sort
+                        'color': '#94a3b8',
+                        'is_best': False,
                         'instructions': turn_by_turn,
                         'segments': road_segments,
                         'filter_feedback': filter_feedback
                     })
                 else:
-                    print(f"   ❌ Không khả thi: {err}")
-                    # === LƯU LẠI INFEASIBILITY ERROR ĐỂ TRẢ VỀ CHO FRONTEND ===
                     if isinstance(err, dict) and err.get('error') == 'infeasible':
                         last_infeasibility_error = err
             except Exception as e:
-                print(f"   ❌ Lỗi xử lý route {idx}: {e}")
+                print(f"❌ Lỗi xử lý route {idx}: {e}")
                 traceback.print_exc()
                 continue
         
@@ -2406,79 +2589,61 @@ def find_route():
             current_battery = float(data.get('start_battery', 100))
             km_can_travel = calculate_km_from_battery(current_battery, EV_CONFIG)
             
-            # === CẢI TIỆN: TRẢ VỀ INFEASIBILITY OBJECT CHO FRONTEND ===
-            # Nếu có infeasibility error chi tiết từ a_star_ev_routing, trả về nó
             if last_infeasibility_error:
-                print(f"   📊 Trả về infeasibility error chi tiết cho Frontend")
-                
-                # === TẠO MAP HTML CHO INFEASIBLE ROUTE ===
-                # (Đã chuyển sang Client-Side Rendering với GoongJS)
                 last_infeasibility_error['map_html'] = None 
-
-                
-                return jsonify({
-                    "infeasibility": last_infeasibility_error
-                }), 200  # Trả 200 OK vì đây là kết quả tính toán hợp lệ, không phải lỗi server
+                return jsonify({"infeasibility": last_infeasibility_error}), 200
             
-            # Fallback: Tạo infeasibility object mặc định nếu không có chi tiết
             default_infeasibility = {
                 "error": "infeasible",
                 "error_type": "no_feasible_route",
                 "severity": "critical",
-                
-                "location": {
-                    "km_from_start": 0,
-                    "km_to_destination": round(direct_distance, 1)
-                },
-                
+                "location": {"km_from_start": 0, "km_to_destination": round(direct_distance, 1)},
                 "battery_state": {
                     "current_percent": round(current_battery, 1),
                     "max_range_km": round(km_can_travel, 1),
                     "needed_km": round(direct_distance, 1),
                     "deficit_percent": round(max(0, (direct_distance - km_can_travel) / km_can_travel * 100), 1) if km_can_travel > 0 else 100
                 },
-                
-                "suggestions": [
-                    "Sạc pin lên 100% trước khi xuất phát",
-                    "Chọn xe có dung lượng pin lớn hơn",
-                    "Chia chuyến đi thành nhiều chặng ngắn hơn"
-                ],
-                
+                "suggestions": ["Sạc pin lên 100%", "Chọn xe pin lớn hơn"],
                 "message": f"🔋 Không có lộ trình khả thi!",
-                "details": f"Quãng đường {direct_distance:.0f}km, pin {current_battery}% (đi được ~{km_can_travel:.0f}km). Không có trạm sạc phù hợp trên đường đi.",
-                "map_html": None  # No map for default case
+                "details": f"Không tìm thấy trạm sạc phù hợp.",
+                "map_html": None
             }
-            
-            return jsonify({
-                "infeasibility": default_infeasibility
-            }), 200
+            return jsonify({"infeasibility": default_infeasibility}), 200
         
-        # === DYNAMIC SORTING THEO PRIORITY ===
+        # === DYNAMIC SORTING THEO PRIORITY (SOFT CONSTRAINTS) ===
         priority = data.get('priority', 'time')
         print(f"📊 Sắp xếp theo tiêu chí: {priority}")
         
-        if priority == 'time':
-            # Tổng thời gian ít nhất
-            routes_data.sort(key=lambda x: x['metrics']['total_time'])
-        elif priority == 'distance':
-            # Quãng đường ngắn nhất
-            routes_data.sort(key=lambda x: x['metrics']['total_distance'])
-        elif priority == 'cost':
-            # Giá rẻ nhất (chi phí tổng)
-            routes_data.sort(key=lambda x: x['metrics'].get('total_cost', 0))
-        elif priority == 'charges' or priority == 'stops':
-            # Ít lần sạc nhất
-            routes_data.sort(key=lambda x: x['metrics']['num_charges'])
-        else:
-            # Mặc định: theo thời gian
-            routes_data.sort(key=lambda x: x['metrics']['total_time'])
+        # Định nghĩa Penalty cho Soft Constraints (để ưu tiên route tuân thủ nếu chênh lệch không đáng kể)
+        PENALTY_COST = 20000  # 20k VND
+        PENALTY_DIST = 5.0    # 5 km
+        PENALTY_TIME = 10.0   # 10 phút
+        
+        def get_sort_key(item):
+            m = item['metrics']
+            violation = m.get('violation_count', 0) > 0
+            
+            if priority == 'cost':
+                # Nếu vi phạm filter, cộng thêm penalty ảo vào cost để so sánh
+                adjusted_cost = m.get('total_cost', 0) + (PENALTY_COST if violation else 0)
+                return adjusted_cost
+            elif priority == 'distance':
+                adjusted_dist = m['total_distance'] + (PENALTY_DIST if violation else 0)
+                return adjusted_dist
+            elif priority == 'charges':
+                return (m['num_charges'], m['total_time'])
+            else: # time
+                adjusted_time = m['total_time'] + (PENALTY_TIME if violation else 0)
+                return adjusted_time
+
+        routes_data.sort(key=get_sort_key)
         
         # === LOGIC MỚI: GÁN TÊN VÀ MÀU SẮC SAU KHI ĐÃ BIẾT AI LÀ NHẤT ===
         for i, route in enumerate(routes_data):
             if i == 0:
-                # Tuyến đầu tiên sau khi sort chính là TUYẾN TỐI ƯU
                 route['name'] = 'Lộ trình tối ưu'
-                route['color'] = '#3b82f6'  # Màu Xanh (Blue)
+                route['color'] = '#3b82f6'
                 route['is_best'] = True
                 route['z_index'] = 1000     # Vẽ lên trên cùng
             else:

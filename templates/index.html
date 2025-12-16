@@ -10,6 +10,15 @@
       href="{{ url_for('static', filename='fav-icon-gg-map.svg') }}"
     />
 
+    <!-- Google Material Symbols (Rounded, solid) -->
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400,1,0&display=swap" rel="stylesheet" />
+
+    <style>
+      /* Force Material Symbols Rounded to use filled (solid) style globally */
+      .material-symbols-rounded { font-variation-settings: 'FILL' 1, 'wght' 700; }
+      .icon.material-symbols-rounded { display: inline-flex; align-items: center; justify-content: center; }
+    </style>
+
     <style>
       @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap");
 
@@ -89,6 +98,8 @@
         height: 100vh;
         overflow-y: auto; /* Đã sửa: cho phép cuộn dọc khi nội dung quá dài */
         overflow-x: hidden;
+        position: relative; /* Đảm bảo context cho absolute children */
+        z-index: 10; /* Đảm bảo sidebar nằm trên map nếu cần, nhưng dưới modal */
       }
 
       /* Scrollbar style cho sidebar */
@@ -291,16 +302,34 @@
       }
 
       .priority-btn {
-        padding: 10px 12px;
+        padding: 8px 10px;
         background: var(--white);
         border: 1px solid var(--gray-300);
         border-radius: 6px;
         cursor: pointer;
-        font-size: 0.8rem;
+        font-size: 0.78rem;
         font-weight: 600;
         color: var(--gray-700);
-        transition: all 0.2s ease;
+        transition: all 0.18s ease;
         font-family: inherit;
+        white-space: nowrap; /* Prevent text wrapping which can break layout */
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* Smaller, compact version for "Ít lần sạc nhất" to avoid layout overflow */
+      .priority-btn[data-priority="charges"] {
+        padding: 6px 8px;
+        font-size: 0.72rem;
+        min-width: 0; /* allow shrinking */
+        justify-content: center;
+      }
+
+      /* Ensure active compact button keeps readable contrast */
+      .priority-btn.active[data-priority="charges"] {
+        background: var(--primary);
+        color: var(--white);
+        border-color: var(--primary);
       }
 
       .priority-btn:hover {
@@ -312,6 +341,69 @@
         background: var(--primary);
         color: var(--white);
         border-color: var(--primary);
+      }
+
+      /* --- Dynamic Badges --- */
+      .best-badge {
+          /* Shrunk badge to prevent layout break: smaller padding, font and radius */
+          padding: 2px 6px;
+          border-radius: 8px;
+          font-size: 0.65rem;
+          font-weight: 600;
+          text-transform: none; /* keep natural case to reduce visual footprint */
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          border: 1px solid transparent;
+          line-height: 1;
+      }
+
+      /* Màu sắc riêng cho từng loại ưu tiên */
+      .best-badge.badge-time { 
+          background-color: #e8f0fe; color: #1967d2; border-color: #d2e3fc; /* Xanh Google */
+      }
+      .best-badge.badge-dist { 
+          background-color: #f3e8fd; color: #9333ea; border-color: #e9d5ff; /* Tím */
+      }
+      .best-badge.badge-cost { 
+          background-color: #e6f4ea; color: #137333; border-color: #ceead6; /* Xanh Lá */
+      }
+      .best-badge.badge-charge { 
+          background-color: #fff7e0; color: #ea8600; border-color: #ffe0b2; /* Cam */
+      }
+
+      /* --- Comparison Text --- */
+      .compare-tag {
+          font-size: 0.68rem; /* slightly smaller to match compact badges */
+          color: #188038;
+          background: #f0fdf4;
+          padding: 2px 6px;
+          border-radius: 4px;
+          margin-top: 4px;
+          font-weight: 600;
+          display: inline-block;
+      }
+
+      /* Responsive tweak: make badges even smaller on very small screens */
+      @media (max-width: 480px) {
+        .best-badge { padding: 1px 4px; font-size: 0.6rem; }
+      }
+
+      /* --- Metric Highlight --- */
+      /* Làm nổi bật chỉ số được ưu tiên */
+      .metric-item.metric-highlight {
+          color: var(--primary-dark);
+          font-weight: 700;
+          background: rgba(16, 185, 129, 0.1);
+          padding: 2px 6px;
+          border-radius: 4px;
+          margin: 0 -6px; /* Căn chỉnh lại do padding */
+      }
+
+      /* Highlight Cost Price (nếu chọn Cost) */
+      .priority-cost-highlight .route-cost-display {
+          color: #188038;
+          font-size: 1.1rem; /* To hơn bình thường */
       }
 
       /* --- Filter Checkboxes --- */
@@ -584,6 +676,9 @@
       .error-state {
         display: none;
         padding: 24px 20px;
+        /* Đảm bảo error state không bị che khuất hoặc tràn ra ngoài */
+        width: 100%;
+        box-sizing: border-box;
       }
 
       .error-state.show {
@@ -790,15 +885,16 @@
       .best-badge {
         background-color: #e6f4ea; /* Green 50 */
         color: #137333; /* Green 700 */
-        padding: 6px 12px;
-        border-radius: 100px;
-        font-size: 0.75rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
+        padding: 2px 6px;
+        border-radius: 12px;
+        font-size: 0.65rem;
+        font-weight: 600;
+        text-transform: none;
+        letter-spacing: 0.2px;
         display: inline-flex;
         align-items: center;
         gap: 4px;
+        line-height: 1;
       }
 
       .summary-metrics {
@@ -1975,11 +2071,17 @@
         position: relative;
         cursor: pointer;
         /* Removed transition on container to prevent Mapbox conflict */
+        z-index: 1; /* Mặc định thấp */
       }
       
       /* FIX FLYING MARKER: Only affect children on hover */
       .gm-marker:hover {
-        z-index: 9999 !important;
+        z-index: 1000 !important; /* Hover luôn lên đỉnh */
+      }
+
+      /* Marker Hết pin cần nổi bật nhất */
+      .gm-marker .pin-fail-marker { 
+        z-index: 500; 
       }
 
       .gm-marker:hover .pin-drop, 
@@ -2451,9 +2553,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@goongmaps/goong-js@1.0.9/dist/goong-js.js"></script>
     <link
       href="https://cdn.jsdelivr.net/npm/@goongmaps/goong-js@1.0.9/dist/goong-js.css"
-      rel="stylesheet"
-    />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0" />
+
   </head>
   <body>
     <div class="app-container">
@@ -2580,8 +2680,9 @@
                     type="button"
                     class="priority-btn"
                     data-priority="charges"
+                    title="Ít lần sạc nhất"
                   >
-                    Ít lần sạc nhất
+                    Ít sạc
                   </button>
                 </div>
               </div>
@@ -2939,19 +3040,33 @@
 
      function drawRouteOnGoong(routes, nearbyFeatures) {
         // 1. Dọn dẹp layer cũ
-        [
+        // NOTE: Do not remove `infeasible-main` here to preserve any infeasible visualization
+        const LAYERS_TO_CLEAR = [
           "route-layer",
           "route-casing",
           "route-outline",
           "route-best",
           "route-source",
-          "infeasible-traveled",
-          "infeasible-remaining",
           "rescue-line",
-        ].forEach((id) => {
-          if (map.getLayer(id)) map.removeLayer(id);
-          if (map.getSource(id)) map.removeSource(id);
+        ];
+        // Remove layers first
+        LAYERS_TO_CLEAR.forEach((id) => { if (map.getLayer(id)) map.removeLayer(id); });
+        // Remove sources only if no other layers reference them
+        LAYERS_TO_CLEAR.forEach((src) => {
+          try {
+            if (map.getSource(src)) {
+              const style = map.getStyle();
+              const layers = (style && style.layers) || [];
+              const using = layers.some((l) => l.source === src);
+              if (!using) map.removeSource(src);
+            }
+          } catch (e) { /* ignore */ }
         });
+
+        // If an infeasible payload exists but without geometry, log for debugging
+        if (window.lastInfeasibleLog && window.lastInfeasibleLog.missingGeometry) {
+          console.warn('Previous infeasible payload missing geometry:', window.lastInfeasibleLog);
+        }
 
         // Remove previous alt-route layers (simple cleanup)
         routes.forEach((route, i) => {
@@ -2995,6 +3110,62 @@
             },
           });
         });
+
+        // ===== Hover helper functions for visual emphasis (non-destructive) =====
+        window.highlightAltRouteVisual = function(i) {
+          const layerId = `layer-alt-${i}`;
+          if (!map || !map.getLayer(layerId)) return;
+          try {
+            // Emphasize selected alt route
+            map.setPaintProperty(layerId, 'line-width', 8);
+            map.setPaintProperty(layerId, 'line-color', '#1A73E8');
+            map.setPaintProperty(layerId, 'line-opacity', 1);
+            // Dim other alts
+            (currentRoutes || []).forEach((r, j) => { if (j!==i && !r.is_best) { const other = `layer-alt-${j}`; if (map.getLayer(other)) try { map.setPaintProperty(other, 'line-opacity', 0.25); } catch(e){} } });
+            // Try bringing to top (best-effort, won't throw if not possible)
+            try { map.moveLayer(layerId); } catch(e){}
+          } catch(e) {
+            console.warn('highlightAltRoute error', e);
+          }
+        };
+
+        window.resetAltRouteVisual = function(i) {
+          const layerId = `layer-alt-${i}`;
+          if (!map || !map.getLayer(layerId)) return;
+          try {
+            map.setPaintProperty(layerId, 'line-width', 5);
+            map.setPaintProperty(layerId, 'line-color', '#C0C0C0');
+            map.setPaintProperty(layerId, 'line-opacity', 0.6);
+            // Restore others
+            (currentRoutes || []).forEach((r, j) => { const other = `layer-alt-${j}`; if (map.getLayer(other)) try { map.setPaintProperty(other, 'line-opacity', 0.6); } catch(e){} });
+          } catch(e) { console.warn('resetAltRoute error', e); }
+        };
+
+        window.highlightBestRouteVisual = function() {
+          if (!map) return;
+          try {
+            if (map.getLayer('route-layer')) {
+              map.setPaintProperty('route-layer', 'line-width', 8);
+              map.setPaintProperty('route-layer', 'line-color', '#1557b0');
+            }
+            if (map.getLayer('route-casing')) {
+              map.setPaintProperty('route-casing','line-width',14);
+            }
+          } catch(e) { console.warn('highlightBestRouteVisual', e); }
+        };
+
+        window.resetBestRouteVisual = function() {
+          if (!map) return;
+          try {
+            if (map.getLayer('route-layer')) {
+              map.setPaintProperty('route-layer', 'line-width', 6);
+              map.setPaintProperty('route-layer', 'line-color', '#1A73E8');
+            }
+            if (map.getLayer('route-casing')) {
+              map.setPaintProperty('route-casing','line-width',10);
+            }
+          } catch(e) { console.warn('resetBestRouteVisual', e); }
+        };
 
         const bestRoute = routes.find((r) => r.is_best) || routes[0];
         const bestGeoJSON = {
@@ -3194,7 +3365,7 @@
                   const highwayName = event.details && event.details.highway !== 'N/A' 
                     ? event.details.highway 
                     : 'Đường quốc lộ';
-                  const warningBadge = event.warning ? `<div class="popup-badge-warning">⚠️ KHÔNG THỂ TRÁNH</div>` : '';
+                  const warningBadge = event.warning ? `<div class="popup-badge-warning"><span class="icon material-symbols-rounded" style="font-size:14px">warning</span> KHÔNG THỂ TRÁNH</div>` : '';
                     
                   popupHTML = `
                     <div class="popup-header" style="color: ${headerColor}">
@@ -3230,7 +3401,7 @@
                   const vehicleInfo = event.details && event.details.vehicle_allowed 
                     ? event.details.vehicle_allowed 
                     : 'Ô tô & Xe máy';
-                  const warningBadge = event.warning ? `<div class="popup-badge-warning">⚠️ KHÔNG THỂ TRÁNH</div>` : '';
+                  const warningBadge = event.warning ? `<div class="popup-badge-warning"><span class="icon material-symbols-rounded" style="font-size:14px">warning</span> KHÔNG THỂ TRÁNH</div>` : '';
                     
                   popupHTML = `
                     <div class="popup-header" style="color: ${headerColor}">
@@ -3514,10 +3685,10 @@
               if (event.type === 'toll') {
                 const headerColor = event.warning ? '#c5221f' : '#f9ab00';
                 const highwayName = event.details && event.details.highway !== 'N/A' ? event.details.highway : 'Đường quốc lộ';
-                const warningBadge = event.warning ? `<div class=\"popup-badge-warning\">⚠️ KHÔNG THỂ TRÁNH</div>` : '';
+                const warningBadge = event.warning ? `<div class=\"popup-badge-warning\"><span class=\"icon material-symbols-rounded\" style=\"font-size:14px\">warning</span> KHÔNG THỂ TRÁNH</div>` : '';
                 popupHTML = `<div class=\"popup-header\" style=\"color: ${headerColor}\"><span class=\"icon material-symbols-rounded\" style=\"font-size:14px\">toll</span>${event.warning ? 'TRẠM THU PHÍ (BẮT BUỘC)' : 'TRẠM THU PHÍ'}</div><div class=\"popup-body\">${warningBadge}<div class=\"popup-title\">${event.name}</div><div class=\"popup-row\"><span class=\"icon material-symbols-rounded\">add_road</span><span>${highwayName}</span></div><div class=\"popup-row\"><span class=\"icon material-symbols-rounded\">payments</span><span class=\"popup-cost\">${formatCurrency(event.cost)}</span></div></div><div class=\"popup-footer\">Cách điểm đi: ${Math.round(event.km)}km</div>`;
               } else if (event.type === 'ferry') {
-                const headerColor = event.warning ? '#c5221f' : '#1e3a8a'; const waitTime = event.details ? event.details.crossing_time_min : 15; const vehicleInfo = event.details && event.details.vehicle_allowed ? event.details.vehicle_allowed : 'Ô tô & Xe máy'; const warningBadge = event.warning ? `<div class=\"popup-badge-warning\">⚠️ KHÔNG THỂ TRÁNH</div>` : '';
+                const headerColor = event.warning ? '#c5221f' : '#1e3a8a'; const waitTime = event.details ? event.details.crossing_time_min : 15; const vehicleInfo = event.details && event.details.vehicle_allowed ? event.details.vehicle_allowed : 'Ô tô & Xe máy'; const warningBadge = event.warning ? `<div class=\"popup-badge-warning\"><span class=\"icon material-symbols-rounded\" style=\"font-size:14px\">warning</span> KHÔNG THỂ TRÁNH</div>` : '';
                 popupHTML = `<div class=\"popup-header\" style=\"color: ${headerColor}\"><span class=\"icon material-symbols-rounded\">directions_boat</span>${event.warning ? 'BẾN PHÀ (BẮT BUỘC)' : 'BẾN PHÀ'}</div><div class=\"popup-body\">${warningBadge}<div class=\"popup-title\">${event.name}</div><div class=\"popup-row\" style=\"align-items:flex-start; margin-bottom:8px;\"><span class=\"icon material-symbols-rounded\" style=\"font-size:16px; margin-top:2px\">place</span><span style=\"font-size:12px; color:#70757a;\">${event.address || 'Đang cập nhật địa chỉ'}</span></div><div class=\"popup-row\"><span class=\"icon material-symbols-rounded\">schedule</span><span>Thời gian qua phà: ~${waitTime}p</span></div><div class=\"popup-row\"><span class=\"icon material-symbols-rounded\">directions_car</span><span style=\"font-size:12px\">${vehicleInfo}</span></div><div class=\"popup-row\"><span class=\"icon material-symbols-rounded\">payments</span><span class=\"popup-cost\">${formatCurrency(event.cost || event.price || 0)}</span></div></div><div class=\"popup-footer\">Tại km số: ${event.km.toFixed(1)}</div>`;
               } else if (event.type === 'highway_stop') {
                 const headerColor = '#e67c73'; const amenities = event.details && event.details.amenities ? (Array.isArray(event.details.amenities) ? event.details.amenities.join(', ') : event.details.amenities) : 'WC, Ăn uống, Đổ xăng';
@@ -3539,22 +3710,41 @@
           });
         }
 
+        // Ensure popup icon sanitization runs after markers are attached
+        try { sanitizeIconsInDOM(); } catch(e) { console.warn('sanitizeIconsInDOM failed', e); }
+
       }
 
 // === HÀM VẼ LỘ TRÌNH KHÔNG KHẢ THI TRÊN GOONG (MD3 STYLE) ===
       function drawInfeasibleOnGoong(data) {
         // 1. Dọn dẹp (Sửa class selector thành .gm-marker)
+        // Remove known infeasible sub-layers first to avoid removing shared sources while layers exist
+        ["infeasible-traveled", "infeasible-remaining", "rescue-line"].forEach((id) => {
+          if (map.getLayer(id)) map.removeLayer(id);
+        });
+
+        // Remove other route layers safely (remove layers first)
         [
           "route-layer",
           "route-outline",
           "route-best",
           "route-source",
-          "infeasible-traveled",
-          "infeasible-remaining",
-          "rescue-line",
         ].forEach((id) => {
           if (map.getLayer(id)) map.removeLayer(id);
-          if (map.getSource(id)) map.removeSource(id);
+        });
+
+        // Now remove sources only if no layer is using them
+        ["infeasible-main", "rescue-line", "route-source"].forEach((src) => {
+          try {
+            if (map.getSource(src)) {
+              const style = map.getStyle();
+              const layers = (style && style.layers) || [];
+              const using = layers.some((l) => l.source === src);
+              if (!using) map.removeSource(src);
+            }
+          } catch (e) {
+            // ignore removal errors
+          }
         });
         document.querySelectorAll(".gm-marker").forEach((el) => el.remove());
 
@@ -3571,6 +3761,25 @@
           (c) => [c[1], c[0]]
         );
 
+        // Sanity check: if combined path isn't continuous, log warning (minimal console noise)
+        if (traveledPath.length > 0 && remainingPath.length > 0) {
+            const lastTraveled = traveledPath[traveledPath.length - 1];
+            const firstRemaining = remainingPath[0];
+            const dist = Math.hypot(lastTraveled[0] - firstRemaining[0], lastTraveled[1] - firstRemaining[1]);
+            if (dist > 0.0002) {
+                console.warn("Infeasible route connection distance is significant:", dist);
+            }
+        }
+
+        // If no geometry provided, keep a small debug footprint so redraws can report it
+        if (traveledPath.length === 0 && remainingPath.length === 0) {
+            console.info('Infeasible payload had no geometry to render.');
+            window.lastInfeasibleLog = { missingGeometry: true, ts: Date.now(), payload: data };
+            return; // nothing to draw
+        } else {
+            window.lastInfeasibleLog = { missingGeometry: false, ts: Date.now(), traveled: traveledPath.length, remaining: remainingPath.length };
+        }
+
         let startCoord = [106.66, 10.76];
         if (traveledPath.length > 0) startCoord = traveledPath[0];
 
@@ -3586,46 +3795,99 @@
             ? remainingPath[remainingPath.length - 1]
             : failCoord;
 
-        // 4. Vẽ Line (Blue & Red Dashed)
-        // Đoạn đi được (Safe Zone - Google Blue)
-        if (traveledPath.length > 0) {
-          map.addSource("infeasible-traveled", {
-            type: "geojson",
-            data: {
+        // 4. Vẽ Line chính (Combined) - GIỮ 1 LAYER ĐỂ TRÁNH VẤN ĐỀ GIAO DIỆN
+        // Nối traveled + remaining thành 1 LineString (bỏ trùng điểm tại failure)
+        const combinedPath = [];
+        if (traveledPath.length > 0) combinedPath.push(...traveledPath);
+        if (remainingPath.length > 0) {
+          // avoid duplicate failure point
+          if (combinedPath.length > 0 && remainingPath[0][0] === combinedPath[combinedPath.length - 1][0] && remainingPath[0][1] === combinedPath[combinedPath.length - 1][1]) {
+            combinedPath.push(...remainingPath.slice(1));
+          } else {
+            combinedPath.push(...remainingPath);
+          }
+        }
+
+        if (combinedPath.length > 0) {
+          // Build a FeatureCollection with two features: traveled + remaining
+          const features = [];
+          if (traveledPath.length > 0) {
+            features.push({
               type: "Feature",
-              geometry: { type: "LineString", coordinates: traveledPath },
-            },
-          });
+              properties: { segment: "traveled" },
+              geometry: { type: "LineString", coordinates: traveledPath }
+            });
+          }
+          if (remainingPath.length > 0) {
+            features.push({
+              type: "Feature",
+              properties: { segment: "remaining" },
+              geometry: { type: "LineString", coordinates: remainingPath }
+            });
+          }
+
+          const data = { type: "FeatureCollection", features };
+
+          // If source exists, update it; otherwise create it
+          if (map.getSource("infeasible-main")) {
+            try { map.getSource("infeasible-main").setData(data); } catch (e) { /* ignore */ }
+          } else {
+            map.addSource("infeasible-main", { type: "geojson", data });
+          }
+
+          // Remove any stale sub-layers first
+          if (map.getLayer("infeasible-traveled")) { map.removeLayer("infeasible-traveled"); }
+          if (map.getLayer("infeasible-remaining")) { map.removeLayer("infeasible-remaining"); }
+
+          // Add traveled (solid blue) layer filtered by segment property
           map.addLayer({
             id: "infeasible-traveled",
             type: "line",
-            source: "infeasible-traveled",
+            source: "infeasible-main",
+            filter: ["==", ["get", "segment"], "traveled"],
             layout: { "line-join": "round", "line-cap": "round" },
-            paint: { "line-color": "#4285f4", "line-width": 6 }, // Blue, dày hơn
+            paint: {
+              "line-color": "#4285f4",
+              "line-width": 6,
+              "line-opacity": 0.95
+            }
           });
-        }
 
-        // Đoạn thiếu hụt (Critical Zone - Red Dashed)
-        if (remainingPath.length > 0) {
-          map.addSource("infeasible-remaining", {
-            type: "geojson",
-            data: {
-              type: "Feature",
-              geometry: { type: "LineString", coordinates: remainingPath },
-            },
-          });
+          // Add remaining (dashed red) layer filtered by segment property
           map.addLayer({
             id: "infeasible-remaining",
             type: "line",
-            source: "infeasible-remaining",
+            source: "infeasible-main",
+            filter: ["==", ["get", "segment"], "remaining"],
             layout: { "line-join": "round", "line-cap": "round" },
             paint: {
-              "line-color": "#ea4335", // Red
+              "line-color": "#ea4335",
               "line-width": 4,
-              "line-dasharray": [2, 4], // Nét đứt rộng hơn
-              "line-opacity": 0.8,
-            },
+              "line-dasharray": [2, 4],
+              "line-opacity": 0.95
+            }
           });
+
+          // Ensure the infeasible layers are moved above route layers after any later redraws
+          // Use delayed moves to handle the case where route layers are added after this function runs
+          setTimeout(() => {
+            try { map.moveLayer("infeasible-traveled"); } catch (e) { /* ignore */ }
+            try { map.moveLayer("infeasible-remaining"); } catch (e) { /* ignore */ }
+          }, 100);
+
+          // Additional safety: repeat once more after 500ms in case redraws are slower
+          setTimeout(() => {
+            try { map.moveLayer("infeasible-traveled"); } catch (e) { /* ignore */ }
+            try { map.moveLayer("infeasible-remaining"); } catch (e) { /* ignore */ }
+          }, 500);
+
+          // Also attempt to move layers to top once the map becomes idle (safer than relying on fixed timers)
+          try {
+            map.once('idle', () => {
+              try { map.moveLayer("infeasible-traveled"); } catch (e) {}
+              try { map.moveLayer("infeasible-remaining"); } catch (e) {}
+            });
+          } catch (e) { /* ignore in environments without event support */ }
         }
 
         // 5. Vẽ Line Cứu hộ (Grey Dashed)
@@ -3711,7 +3973,7 @@
                 HẾT PIN TẠI ĐÂY
               </div>
               <div class="popup-body">
-                <div class="popup-title popup-warning">⚠️ HẾT PIN</div>
+                <div class="popup-title popup-warning"><span class="icon material-symbols-rounded" style="font-size:16px">battery_alert</span> HẾT PIN</div>
                 <div class="popup-row"><span class="icon material-symbols-rounded">place</span><span style="color:#5f6368;font-size:13px">Bạn đã đi đến điểm không thể tiếp tục với pin hiện tại.</span></div>
                 <div class="popup-row"><span class="icon material-symbols-rounded">ev_station</span><span style="color:#5f6368;font-size:13px">Gợi ý: Tìm trạm sạc gần nhất hoặc giả lập pin 100%.</span></div>
                 <div style="margin-top:8px; display:flex; gap:8px;">
@@ -3908,20 +4170,51 @@ function createGoongMarker(el, lngLat, popupHTML, offset, dataObj) {
         return container;
       }
 
+      // === SANITIZE ICONS IN DOM (Fallback fixer) ===
+      // Replaces leftover emoji icons in popups/badges with Material Symbols to keep UI consistent.
+      function sanitizeIconsInDOM() {
+        // Popup warning badges
+        document.querySelectorAll('.popup-badge-warning').forEach(el => {
+          const txt = (el.textContent || '').trim();
+          if (txt && txt.includes('⚠')) {
+            const cleaned = txt.replace(/⚠️?\s*/g, '').trim();
+            el.innerHTML = `<span class="icon material-symbols-rounded" style="font-size:14px">warning</span> ${cleaned}`;
+          }
+        });
+
+        // Warning inline text
+        document.querySelectorAll('.warning-text').forEach(el => {
+          const t = (el.textContent || '').trim();
+          if (t && t.includes('⚠')) {
+            const cleaned = t.replace(/⚠️?\s*/g, '').trim();
+            el.innerHTML = `<span class="icon material-symbols-rounded" style="font-size:14px">warning</span> ${cleaned}`;
+          }
+        });
+
+        // Feedback badges (✅)
+        document.querySelectorAll('.feedback-badge.success').forEach(el => {
+          const txt = (el.textContent || '').trim();
+          if (txt && txt.includes('✅')) {
+            const cleaned = txt.replace(/✅?\s*/g, '').trim();
+            el.innerHTML = `<span class="icon material-symbols-rounded" style="font-size:14px">check_circle</span> ${cleaned}`;
+          }
+        });
+      }
+
       function showToast(type, title, message, duration = 5000) {
         const container = createToastContainer();
         const toast = document.createElement("div");
         toast.className = `toast ${type}`;
 
         const icons = {
-          warning: "⚠️",
-          error: "❌",
-          info: "ℹ️",
-          success: "✅",
+          warning: `<span class="icon material-symbols-rounded" style="font-size:16px">warning</span>`,
+          error: `<span class="icon material-symbols-rounded" style="font-size:16px">error</span>`,
+          info: `<span class="icon material-symbols-rounded" style="font-size:16px">info</span>`,
+          success: `<span class="icon material-symbols-rounded" style="font-size:16px">check_circle</span>`,
         };
 
         toast.innerHTML = `
-          <span class="toast-icon">${icons[type] || "ℹ️"}</span>
+          <span class="toast-icon">${icons[type] || icons.info}</span>
           <div class="toast-content">
             <div class="toast-title">${title}</div>
             <div class="toast-message">${message}</div>
@@ -4045,8 +4338,8 @@ function createGoongMarker(el, lngLat, popupHTML, offset, dataObj) {
           }
 
           const warningClass = event.warning ? 'warning' : '';
-          const avoidedBadge = (event.hasOwnProperty('warning') && event.warning === false) ? `<span class="feedback-badge success">✅ Đã tránh</span>` : '';
-          const warningText = event.warning ? `<span class="warning-text">⚠️ Bắt buộc đi qua</span>` : '';
+          const avoidedBadge = (event.hasOwnProperty('warning') && event.warning === false) ? `<span class="feedback-badge success"><span class="icon material-symbols-rounded" style="font-size:14px">check_circle</span> Đã tránh</span>` : '';
+          const warningText = event.warning ? `<span class="warning-text"><span class="icon material-symbols-rounded" style="font-size:14px">warning</span> Bắt buộc đi qua</span>` : '';
 
           html += `
             <div class="travel-event ${warningClass}">
@@ -4109,19 +4402,20 @@ function createGoongMarker(el, lngLat, popupHTML, offset, dataObj) {
 
         <!-- Visualization: Linear Progress Bar -->
         <div class="md3-inf-viz">
-            <div class="md3-progress-labels">
-                <span>Xuất phát</span>
-                <span style="color: var(--md-sys-color-error)">Hết pin (${Math.round(bat.current_percent)}%)</span>
-                <span>Đích</span>
+            <div class="md3-progress-labels" style="position: relative; height: 20px; margin-bottom: 4px;">
+                <span style="position: absolute; left: 0;">Xuất phát</span>
+                <span style="position: absolute; right: 0;">Đích</span>
+                
+                <!-- Dynamic Label positioned at the break point -->
+                <span style="position: absolute; left: ${percentSafe}%; transform: translateX(-50%); color: var(--md-sys-color-error); font-weight: bold; white-space: nowrap; transition: left 0.3s ease;">
+                    Hết pin (${Math.round(bat.current_percent)}%)
+                </span>
             </div>
             <div class="md3-progress-track">
                 <!-- Safe Zone (Green) -->
                 <div class="md3-bar-safe" style="width: ${percentSafe}%">
                     <!-- Break Point Indicator -->
                     <div class="md3-break-point" style="right: 0; transform: translateX(50%);"></div>
-                    <div class="md3-break-label" style="right: -4px; transform: translateX(50%); top: -20px;">
-                        !
-                    </div>
                 </div>
                 <!-- Risk Zone (Dashed/Gray) -->
                 <div class="md3-bar-risk"></div>
@@ -4252,7 +4546,7 @@ function createGoongMarker(el, lngLat, popupHTML, offset, dataObj) {
           }, 300);
         } else {
           // Mặc định: Hiển thị thông báo
-          alert(`💡 Gợi ý: ${text}\n\nHãy điều chỉnh thông số và thử lại.`);
+          alert(`Gợi ý: ${text}\n\nHãy điều chỉnh thông số và thử lại.`);
         }
       }
 
@@ -4625,7 +4919,12 @@ function createGoongMarker(el, lngLat, popupHTML, offset, dataObj) {
 
         // === DRAW INFEASIBLE ROUTE ON MAP (NEW) ===
         if (errorData.traveled_geometry || errorData.remaining_geometry) {
-          drawInfeasibleRouteOnMap(errorData);
+          // Sử dụng hàm drawInfeasibleOnGoong thay vì drawInfeasibleRouteOnMap
+          if (typeof drawInfeasibleOnGoong === 'function') {
+             drawInfeasibleOnGoong(errorData);
+          } else if (typeof drawInfeasibleRouteOnMap === 'function') {
+             drawInfeasibleRouteOnMap(errorData);
+          }
         }
       }
 
@@ -5303,8 +5602,30 @@ function createGoongMarker(el, lngLat, popupHTML, offset, dataObj) {
         const container = document.getElementById("routesList");
         container.innerHTML = "";
 
+        // Lấy tiêu chí đang active
+        const activePriorityBtn = document.querySelector(".priority-btn.active");
+        const priorityKey = activePriorityBtn ? activePriorityBtn.dataset.priority : 'time';
+
+        // Mapping text hiển thị
+        const priorityLabels = {
+            'time': { label: 'Nhanh nhất', icon: 'bolt', colorClass: 'badge-time' },
+            'distance': { label: 'Ngắn nhất', icon: 'straighten', colorClass: 'badge-dist' },
+            'cost': { label: 'Rẻ nhất', icon: 'savings', colorClass: 'badge-cost' },
+            'charges': { label: 'Ít dừng sạc', icon: 'ev_station', colorClass: 'badge-charge' }
+        };
+
+        // Cập nhật Header kết quả
+        const resultHeader = document.querySelector(".results-header");
+        if(resultHeader) {
+            const labelText = activePriorityBtn ? activePriorityBtn.innerText : "Thời gian ít nhất";
+            resultHeader.innerHTML = `Danh sách lộ trình <span style="font-weight:400; font-size:0.8rem; color:#666; display:block; margin-top:4px">Đang ưu tiên: <b style="color:var(--primary)">${labelText}</b></span>`;
+        }
+
+        // Helper check highlight
+        const hl = (key) => priorityKey === key ? 'metric-highlight' : '';
+
         routes.forEach((route, index) => {
-          const isBest = route.is_best === true;
+          const isBest = index === 0; // Route đầu tiên sau khi sort là tốt nhất
           const card = document.createElement("div");
           card.className = "route-card" + (isBest ? " best" : "");
           
@@ -5324,6 +5645,71 @@ function createGoongMarker(el, lngLat, popupHTML, offset, dataObj) {
             }
           };
 
+          // ===== Hover Highlight: make corresponding map route more prominent =====
+          card.addEventListener('mouseenter', () => {
+            // If card is active (clicked-open), don't override selection
+            if (card.classList.contains('active')) return;
+
+            if (isBest) {
+              try { highlightBestRouteVisual(); } catch(e) { console.warn('highlightBestRouteVisual failed', e); }
+            } else {
+              try { highlightAltRouteVisual(index); } catch(e) { console.warn('highlightAltRouteVisual failed', e); }
+            }
+          });
+
+          card.addEventListener('mouseleave', () => {
+            if (card.classList.contains('active')) return;
+
+            if (isBest) {
+              try { resetBestRouteVisual(); } catch(e) { console.warn('resetBestRouteVisual failed', e); }
+            } else {
+              try { resetAltRouteVisual(index); } catch(e) { console.warn('resetAltRouteVisual failed', e); }
+            }
+          });
+
+          let badgeHtml = '';
+          let compareText = '';
+
+          // CHỈ XỬ LÝ CHO ROUTE TỐT NHẤT (Route 0)
+          if (isBest) {
+              const pInfo = priorityLabels[priorityKey];
+              
+              // 1. Tạo Badge Động
+              badgeHtml = `
+              <div class="best-badge ${pInfo.colorClass}">
+                  <span class="icon material-symbols-rounded" style="font-size:14px">${pInfo.icon}</span>
+                  ${pInfo.label}
+              </div>`;
+
+              // 2. Tạo Text So Sánh (So với route thứ 2 nếu có)
+              if (routes.length > 1) {
+                  const nextRoute = routes[1];
+                  let diffVal = 0;
+                  let diffUnit = '';
+                  
+                  if (priorityKey === 'time') {
+                      diffVal = Math.round(nextRoute.metrics.total_time - route.metrics.total_time);
+                      diffUnit = 'phút';
+                  } else if (priorityKey === 'distance') {
+                      diffVal = (nextRoute.metrics.total_distance - route.metrics.total_distance).toFixed(1);
+                      diffUnit = 'km';
+                  } else if (priorityKey === 'cost') {
+                      diffVal = nextRoute.metrics.total_cost - route.metrics.total_cost;
+                      // Chỉ hiện nếu chênh lệch đáng kể (> 5000đ)
+                      if (diffVal > 5000) diffUnit = 'đ'; 
+                  }
+
+                  // Chỉ hiện so sánh nếu Route 1 tốt hơn Route 2 thật sự
+                  if (diffVal > 0) {
+                      if (priorityKey === 'cost') {
+                          compareText = `<div class="compare-tag">Tiết kiệm ${formatCurrency(diffVal)}</div>`;
+                      } else {
+                          compareText = `<div class="compare-tag">Tốt hơn ${diffVal} ${diffUnit}</div>`;
+                      }
+                  }
+              }
+          }
+
           // --- 1. Summary Header (Always Visible) ---
           const summaryHtml = `
             <div class="card-summary">
@@ -5331,22 +5717,19 @@ function createGoongMarker(el, lngLat, popupHTML, offset, dataObj) {
                     <div class="route-time-big">
                         ${formatDuration(route.metrics.total_time)}
                         ${(route.metrics.toll_cost > 0 || route.metrics.ferry_cost > 0) ? `<span style="font-size: 0.75rem; color: #70757A; font-weight: 400; margin-left: 8px; vertical-align: middle;">Có thu phí</span>` : ''}
+                        ${compareText}
                     </div>
-                    ${isBest ? `
-                    <div class="best-badge">
-                        <span class="icon material-symbols-rounded" style="font-size:14px">thumb_up</span>
-                        Tốt nhất
-                    </div>` : ''}
+                    ${badgeHtml}
                 </div>
                 
                 <!-- Row 2: Physical Metrics -->
                 <div class="summary-metrics">
-                    <div class="metric-item">
+                    <div class="metric-item ${hl('distance')}">
                         <span class="icon material-symbols-rounded" style="font-size:16px">distance</span>
                         ${Math.round(route.metrics.total_distance)} km
                     </div>
                     <div class="metric-dot"></div>
-                    <div class="metric-item">
+                    <div class="metric-item ${hl('charges')}">
                         <span class="icon material-symbols-rounded" style="font-size:16px">ev_station</span>
                         ${route.metrics.num_charges} lần sạc
                     </div>
@@ -5359,10 +5742,10 @@ function createGoongMarker(el, lngLat, popupHTML, offset, dataObj) {
 
                 <!-- Row 3: Financial Metrics (Vertical Stack) -->
                 ${route.metrics.total_cost > 0 ? `
-                <div class="summary-metrics" style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #e0e0e0;">
+                <div class="summary-metrics ${priorityKey === 'cost' ? 'priority-cost-highlight' : ''}" style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #e0e0e0;">
                     <div class="metric-item cost-container" onclick="toggleCostTooltip(event, this)" style="width: 100%;">
                         <span class="icon material-symbols-rounded" style="font-size:18px; color: #188038">payments</span>
-                        <span style="color: #188038; font-weight:700; font-size: 1rem; margin-right: auto;">${formatCurrency(route.metrics.total_cost)}</span>
+                        <span class="route-cost-display" style="color: #188038; font-weight:700; font-size: 1rem; margin-right: auto;">${formatCurrency(route.metrics.total_cost)}</span>
                         
                         <span style="font-size: 0.8rem; color: #1a73e8; font-weight: 500;">Chi tiết</span>
                         <span class="icon material-symbols-rounded info-icon" style="font-size: 16px; margin-left: 2px; color: #1a73e8;">info</span>
@@ -5415,6 +5798,8 @@ function createGoongMarker(el, lngLat, popupHTML, offset, dataObj) {
           card.innerHTML = summaryHtml + detailsHtml;
           container.appendChild(card);
         });
+        // Sanitize any leftover emoji-based icons into Material Symbols for consistency
+        try { sanitizeIconsInDOM(); } catch(e) { console.warn('sanitizeIconsInDOM failed', e); }
       }
 
 
