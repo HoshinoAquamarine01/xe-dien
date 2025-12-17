@@ -2084,15 +2084,32 @@
         z-index: 500; 
       }
 
-      .gm-marker:hover .pin-drop, 
-      .gm-marker:hover .pin-dot,
-      .gm-marker:hover .pin-mini-icon,
-      .gm-marker:hover .nearest-station-icon,
-      .gm-marker:hover .pin-fail-marker { 
-        transform: scale(1.15) translateY(-6px);
-        transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        box-shadow: 0 8px 16px rgba(0,0,0,0.3);
-      }
+      /* --- FIX LỖI MARKER --- */
+
+/* 1. Cấu hình hiệu ứng chung */
+.gm-marker:hover .pin-drop, 
+.gm-marker:hover .pin-dot,
+.gm-marker:hover .pin-mini-icon,
+.gm-marker:hover .nearest-station-icon,
+.gm-marker:hover .pin-fail-marker { 
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+  z-index: 999;
+}
+
+/* 2. NHÓM HÌNH TRÒN (Không xoay): Chỉ cần phóng to và bay lên */
+.gm-marker:hover .pin-dot,
+.gm-marker:hover .pin-mini-icon,
+.gm-marker:hover .nearest-station-icon {
+  transform: scale(1.15) translateY(-6px);
+}
+
+/* 3. NHÓM HÌNH GIỌT NƯỚC (Đang xoay -45deg): Phải giữ nguyên góc xoay */
+.gm-marker:hover .pin-drop,
+.gm-marker:hover .pin-fail-marker {
+  /* Quan trọng: Giữ rotate(-45deg) để không bị bật ngửa */
+  transform: rotate(-45deg) scale(1.15) translate(-4px, -4px); 
+}
 
       /* Style cho Popup chuẩn Google Maps */
       .google-popup .mapboxgl-popup-content {
@@ -2552,8 +2569,9 @@
 </style>
     <script src="https://cdn.jsdelivr.net/npm/@goongmaps/goong-js@1.0.9/dist/goong-js.js"></script>
     <link
+      rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@goongmaps/goong-js@1.0.9/dist/goong-js.css"
-
+    />
   </head>
   <body>
     <div class="app-container">
