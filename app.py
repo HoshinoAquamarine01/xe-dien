@@ -2432,9 +2432,6 @@ def summarize_route_segments(instructions):
 
 @app.route('/favicon.ico')
 def favicon():
-<<<<<<< HEAD
-    return send_from_directory('public', 'avt.ico', mimetype='image/x-icon')
-=======
     return send_from_directory('static', 'fav-icon-gg-map.svg', mimetype='image/svg+xml')
 
 @app.route('/api/status-log')
@@ -2442,7 +2439,6 @@ def get_status_log():
     """API để frontend polling trạng thái hiện tại"""
     global CURRENT_PROCESSING_LOG
     return jsonify({"message": CURRENT_PROCESSING_LOG})
->>>>>>> newest
 
 @app.route('/')
 def index():
