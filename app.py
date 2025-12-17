@@ -38,7 +38,7 @@ CACHE_TTL = 3600  # Cache 1 giờ
 # ==============================================================================
 #  CẤU HÌNH GOONG API (API chính cho Việt Nam)
 # ==============================================================================
-GOONG_API_KEY = "P7tEN9p2VUxhqxFQJ7fWdaPzDEbs5YfnRoXw0fxm"  # Routing API
+GOONG_API_KEY = "wbkIMwoWVcgXzbmC3fA4GsktVFZXVHczVRwdkV7W"  # Routing API
 GOONG_MAPTILES_KEY = "3kieVmAErykLSTEnl574OCGXiv9qUlo1QdK1lqGU"  # Map Tiles API
 GOONG_DIRECTION_URL = "https://rsapi.goong.io/Direction"
 
@@ -302,6 +302,9 @@ def get_route_from_goong(start_coords, end_coords, vehicle='car', user_filters=N
     """
     Lấy route từ Goong Direction API - Tối ưu cho Việt Nam.
     
+    ✅ ĐÃ NÂNG CẤP: Yêu cầu geometry chi tiết (alternatives=true, steps=true)
+    để đường đi bám sát thực tế, không bị gãy khúc.
+    
     Goong API được thiết kế riêng cho hạ tầng giao thông Việt Nam,
     tự động xử lý các đường nội địa mà không cần logic chunking/anchors.
     
@@ -309,9 +312,10 @@ def get_route_from_goong(start_coords, end_coords, vehicle='car', user_filters=N
         start_coords: Tuple (lat, lon) điểm bắt đầu
         end_coords: Tuple (lat, lon) điểm kết thúc
         vehicle: Phương tiện ('car', 'bike', 'taxi')
+        user_filters: Dict các tùy chọn tránh (tolls, highways, ferries)
         
     Returns:
-        list: Danh sách routes theo format chuẩn OSRM hoặc [] nếu thất bại
+        list: Danh sách routes với geometry chi tiết hoặc [] nếu thất bại
     """
     try:
         # Goong API yêu cầu format: lat,lon (Vĩ độ, Kinh độ)
@@ -322,7 +326,12 @@ def get_route_from_goong(start_coords, end_coords, vehicle='car', user_filters=N
             "origin": origin,
             "destination": destination,
             "vehicle": vehicle,
-            "api_key": GOONG_API_KEY
+            "api_key": GOONG_API_KEY,
+            
+            "overview": "full", 
+
+            "alternatives": "true",
+            "steps": "true"
         }
 
         # --- FIX: FORCE VIETNAM ROUTE (Tránh đi qua Lào/Campuchia) ---
@@ -368,7 +377,9 @@ def get_route_from_goong(start_coords, end_coords, vehicle='car', user_filters=N
         if response.status_code == 200:
             data = response.json()
             
-            if data.get("status") == "OK" and data.get("routes"):
+            # ✅ FIX: Goong API có thể không trả về 'status' hoặc trả về 'geocoded_waypoints'
+            # Chỉ cần kiểm tra có 'routes' và không rỗng là thành công
+            if data.get("routes") and len(data["routes"]) > 0:
                 print(f"✅ Goong API trả về {len(data['routes'])} route(s)")
                 
                 # === ADAPTER: Chuyển đổi Goong Response → OSRM Format ===
@@ -426,6 +437,8 @@ def get_route_from_goong(start_coords, end_coords, vehicle='car', user_filters=N
                 
                 return standardized_routes
             else:
+                # Debug: In ra các keys để biết tại sao thất bại
+                print(f"⚠️ Goong Response Keys: {list(data.keys())}")
                 error_msg = data.get("error_message", data.get("status", "Unknown error"))
                 print(f"⚠️ Goong API error: {error_msg}")
                 return []
@@ -607,39 +620,52 @@ def get_route(start_coords, end_coords, options=None):
         # route contains the avoided features; if it does, try Mapbox with excludes as a fallback.
         try:
             if any(user_filters.values()):
-                primary_route = routes[0]
-                # primary_route.geometry may be encoded polyline string or raw geometry
-                coords = []
-                geom = primary_route.get('geometry')
-                if isinstance(geom, str) and geom:
-                    try:
-                        coords = polyline.decode(geom)
-                    except Exception:
-                        coords = []
-                elif isinstance(geom, list) and geom:
-                    coords = geom
-
-                violation = False
-                if coords:
-                    if user_filters.get('avoid_tolls'):
-                        if find_toll_stations_on_route(coords, max_distance_km=0.1):
-                            violation = True
-                    if user_filters.get('avoid_ferries') and not violation:
-                        if find_ferries_on_route(coords, max_distance_km=0.2):
-                            violation = True
-                    if user_filters.get('avoid_highways') and not violation:
-                        if find_highway_stations_on_route(coords, max_distance_km=0.1):
-                            violation = True
-
-                if violation:
-                    print("⚠️ Goong route violates user filters — attempting Mapbox with excludes as fallback...")
+                # ✅ FIX: Kiểm tra TẤT CẢ các route Goong trả về (vì đã bật alternatives=true)
+                # Tìm route đầu tiên không vi phạm filters
+                best_valid_route_idx = -1
+                
+                for idx, route in enumerate(routes):
+                    # Decode geometry
+                    coords = []
+                    geom = route.get('geometry')
+                    if isinstance(geom, str) and geom:
+                        try:
+                            coords = polyline.decode(geom)
+                        except Exception:
+                            coords = []
+                    elif isinstance(geom, list) and geom:
+                        coords = geom
+                    
+                    # Check violations
+                    is_violation = False
+                    if coords:
+                        if user_filters.get('avoid_tolls') and find_toll_stations_on_route(coords, max_distance_km=0.1):
+                            is_violation = True
+                        if not is_violation and user_filters.get('avoid_ferries') and find_ferries_on_route(coords, max_distance_km=0.2):
+                            is_violation = True
+                        if not is_violation and user_filters.get('avoid_highways') and find_highway_stations_on_route(coords, max_distance_km=0.1):
+                            is_violation = True
+                    
+                    if not is_violation:
+                        best_valid_route_idx = idx
+                        break
+                
+                # Nếu tìm thấy route hợp lệ trong danh sách Goong trả về
+                if best_valid_route_idx != -1:
+                    if best_valid_route_idx > 0:
+                        print(f"✅ Goong Route #{best_valid_route_idx} tuân thủ filters! Đưa lên đầu danh sách.")
+                        # Đưa route tốt nhất lên đầu
+                        routes.insert(0, routes.pop(best_valid_route_idx))
+                else:
+                    # Nếu TẤT CẢ route của Goong đều vi phạm -> Mới fallback sang Mapbox
+                    print("⚠️ Tất cả Goong routes đều vi phạm filters — attempting Mapbox fallback...")
                     mapbox_routes = get_route_from_mapbox(start_coords, end_coords, user_filters=user_filters)
                     if mapbox_routes:
                         print("✅ Mapbox found an alternative that respects filters — using Mapbox result")
                         ROUTE_CACHE[cache_key] = {'data': mapbox_routes, 'time': time.time()}
                         return mapbox_routes, None
                     else:
-                        print("⚠️ Mapbox could not find a filter-respecting alternative — keeping Goong route and flagging warnings")
+                        print("⚠️ Mapbox could not find a filter-respecting alternative — keeping Goong route")
         except Exception as e:
             print(f"⚠️ Warning while validating filters against Goong route: {e}")
         # Validate that the route stays within Vietnam; if not, request with forced VN waypoint
@@ -1185,7 +1211,7 @@ def get_stations_along_route(route_coords, route_km_cumulative, buffer_km=20.0):
     elif total_route_km > 500:
         sample_interval_km = 10.0  # Dài -> lấy mẫu ~10 km
     else:
-        sample_interval_km = 3.0   # Bình thường -> lấy mẫu ~3 km
+        sample_interval_km = 0.5  # Bình thường -> lấy mẫu ~3 km
     
     sampled_indices = [0]
     last_km = 0
@@ -1376,6 +1402,67 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
     # Buffer 12km để bắt trạm ở đường tránh, nội thị (tăng từ 5km)
     candidates = get_stations_along_route(route_coords, route_km_cumulative, buffer_km=25.0)
     
+    # --- EMERGENCY INJECTION: Nếu pin thấp, tìm trạm gần nhất bất kể lộ trình ---
+    SAFE_THRESHOLD = config.get('min_battery', 20)
+    if start_battery < SAFE_THRESHOLD + 15:
+        print(f"⚠️ Pin thấp ({start_battery}%) - Kích hoạt chế độ tìm kiếm khẩn cấp (Emergency Injection)")
+        if station_tree is not None and len(stations) > 0:
+            try:
+                # Tìm 5 trạm gần nhất trong bán kính 15km
+                distances, indices = station_tree.query(start_coords, k=min(5, len(stations)))
+                
+                # Đảm bảo indices là list
+                if not isinstance(indices, (list, np.ndarray)):
+                    indices = [indices]
+                    distances = [distances]
+                
+                existing_station_indices = {c['station_idx'] for c in candidates}
+                
+                for dist_deg, idx in zip(distances, indices):
+                    if idx in existing_station_indices:
+                        continue
+                        
+                    station = stations[idx]
+                    station_pos = (station['lat'], station['lon'])
+                    dist_km = geodesic(start_coords, station_pos).km
+                    
+                    if dist_km > 15.0: # Bỏ qua nếu quá xa
+                        continue
+                        
+                    # Project lên route để có km_position (dù có thể là 0)
+                    # Tìm điểm gần nhất trên route
+                    min_dist_to_route = float('inf')
+                    best_route_idx = 0
+                    
+                    # Chỉ quét 100 điểm đầu tiên của route để tiết kiệm (vì đang ở gần start)
+                    scan_limit = min(100, len(route_coords))
+                    for i in range(scan_limit):
+                        d = geodesic(station_pos, route_coords[i]).km
+                        if d < min_dist_to_route:
+                            min_dist_to_route = d
+                            best_route_idx = i
+                    
+                    km_position = route_km_cumulative[best_route_idx]
+                    
+                    # Thêm vào candidates
+                    print(f"   🚑 Inject trạm khẩn cấp: {station.get('name')} (cách {dist_km:.1f}km)")
+                    candidates.append({
+                        'station': station,
+                        'station_idx': idx,
+                        'km_position': km_position,
+                        'detour_km': min_dist_to_route, # Dùng khoảng cách tới route làm detour
+                        'route_idx': best_route_idx,
+                        'power': station.get('power', 150),
+                        'type': 'station',
+                        'is_emergency': True # Đánh dấu
+                    })
+                    
+            except Exception as e:
+                print(f"⚠️ Lỗi Emergency Injection: {e}")
+                
+    # Sắp xếp lại candidates theo km_position
+    candidates.sort(key=lambda x: x['km_position'])
+    
     # Thêm node Start và End
     nodes = []
     
@@ -1474,6 +1561,9 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
             },
             "traveled_geometry": traveled_geometry,
             "remaining_geometry": remaining_geometry,
+            # ✅ GEOMETRY CHI TIẾT (Để vẽ mượt mà)
+            "traveled_coords": traveled_coords,
+            "remaining_coords": remaining_coords,
             "failure_point": {
                 "lat": failure_point[0],
                 "lon": failure_point[1]
@@ -1553,10 +1643,17 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
             battery_consumed = calculate_battery_consumption(total_dist, config)
             battery_remaining = current.battery - battery_consumed
             
-            # Nếu không đủ pin đến next_node
-            if battery_remaining < config['min_battery']:
-                # Nếu current_node là station, thử sạc trước khi đi
-                if current_node['type'] == 'station':
+            # === SOFT CONSTRAINT & CHARGING LOGIC ===
+            MIN_BATTERY = config.get('min_battery', 20)
+            DEAD_BATTERY = 5.0
+            penalty_cost = 0
+            
+            # 1. XỬ LÝ SẠC (Nếu current là station)
+            if current_node['type'] == 'station' and current.battery < 100:
+                # Kích hoạt sạc nếu pin thấp hoặc chiến lược tối ưu
+                should_charge = (battery_remaining < MIN_BATTERY) or (current.battery < 80)
+                
+                if should_charge:
                     # Use smart charging strategy to decide partial vs full charge
                     # Default safe value
                     optimal_target = 100.0
@@ -1583,7 +1680,7 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
                         optimal_target = 100.0
 
                     # Ensure target is sufficient to reach next hop
-                    min_needed_for_next_hop = battery_consumed + config.get('min_battery', 0)
+                    min_needed_for_next_hop = battery_consumed + MIN_BATTERY
                     try:
                         target_battery = max(float(optimal_target), float(min_needed_for_next_hop))
                     except Exception:
@@ -1592,7 +1689,7 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
                     target_battery = min(100.0, target_battery)
 
                     # Only charge if it increases battery significantly
-                    if target_battery > current.battery + 2 and current.battery < 100:
+                    if target_battery > current.battery + 2:
                         charge_time = calculate_charge_time(
                             current.battery,
                             target_battery,
@@ -1604,21 +1701,27 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
                         energy_kwh = (charge_added / 100) * config['battery_capacity']
 
                         # Tính lại battery sau khi sạc và sau khi đi đến next_node
-                        new_battery = target_battery - battery_consumed
+                        new_battery_after_charge = target_battery - battery_consumed
 
-                        if new_battery >= config.get('min_battery', 0):
+                        if new_battery_after_charge >= DEAD_BATTERY:
                             driving_time = (total_dist / AVG_SPEED_KMH) * 60
-                            new_g_cost = current.g_cost + driving_time + charge_time
+                            
+                            # Penalty cho nhánh sạc (nếu vẫn < MIN)
+                            charge_penalty = 0
+                            if new_battery_after_charge < MIN_BATTERY:
+                                charge_penalty = (MIN_BATTERY - new_battery_after_charge) * 20.0
+                                
+                            new_g_cost = current.g_cost + driving_time + charge_time + charge_penalty
 
                             # Heuristic (với trọng số 1.5 để tăng tốc cho route dài)
-                            HEURISTIC_WEIGHT = 1.5
+                            HEURISTIC_WEIGHT = 1.0
                             remaining_km = total_route_km - next_node['km_position']
                             h_cost = ((remaining_km / AVG_SPEED_KMH) * 60) * HEURISTIC_WEIGHT
 
                             new_node = AStarNode(
                                 node_id=next_idx,
                                 km_position=next_node['km_position'],
-                                battery=new_battery,
+                                battery=new_battery_after_charge,
                                 g_cost=new_g_cost,
                                 h_cost=h_cost,
                                 parent=current,
@@ -1629,10 +1732,17 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
 
                             heapq.heappush(pq, (new_node.f_cost, counter, new_node))
                             counter += 1
-                
-                # Không thể đến next_node từ current_node mà không sạc
-                # (hoặc current_node không phải station)
-                continue
+            
+            # 2. XỬ LÝ ĐI TIẾP (Không sạc thêm)
+            # Kiểm tra Hard Constraint (Dead Zone)
+            if battery_remaining < DEAD_BATTERY:
+                continue # Không thể đi tiếp
+            
+            # Kiểm tra Soft Constraint (Risk Zone)
+            if battery_remaining < MIN_BATTERY:
+                violation = MIN_BATTERY - battery_remaining
+                # Trọng số phạt: 1% pin thiếu = 20 phút phạt
+                penalty_cost = violation * 20.0
             
             # === BACKTRACK PRUNING: if this is a backward move, only accept if promising ===
             is_backward = next_node['km_position'] < current_node['km_position']
@@ -1649,7 +1759,7 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
 
             # === CÓ THỂ ĐI ĐƯỢC ===
             driving_time = (total_dist / AVG_SPEED_KMH) * 60
-            new_g_cost = current.g_cost + driving_time
+            new_g_cost = current.g_cost + driving_time + penalty_cost
 
             # Heuristic (với trọng số 1.5 để tăng tốc cho route dài)
             HEURISTIC_WEIGHT = 1.5
@@ -1733,6 +1843,11 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
                 "current_percent": start_battery,
                 "max_range_km": max_range_km
             },
+            "traveled_geometry": traveled_geometry,
+            "remaining_geometry": remaining_geometry,
+            # ✅ GEOMETRY CHI TIẾT
+            "traveled_coords": traveled_subset,
+            "remaining_coords": remaining_subset,
             "location": {
                 "coords": list(failure_point),
                 "km_from_start": round(failure_km, 1),
@@ -1764,6 +1879,11 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
 
 
 def reconstruct_astar_result(goal_node, nodes, route_coords, route_km_cumulative, config, user_filters=None):
+    """
+    Tái tạo kết quả từ A* goal_node.
+    
+    ✅ UPGRADED: Trả về geometry_coords đầy đủ để Frontend vẽ đường mượt mà
+    """
     """
     Xây dựng kết quả từ A* solution path.
     
@@ -1958,6 +2078,9 @@ def reconstruct_astar_result(goal_node, nodes, route_coords, route_km_cumulative
         # Travel events
         'travel_events': travel_events,
         
+        # ✅ GEOMETRY: Trả về tọa độ chi tiết để Frontend vẽ đường mượt mà
+        'geometry_coords': route_coords,  # Mảng [[lat, lon], ...] đầy đủ
+        
         # A* metadata (để debug/bảo vệ đồ án)
         'algorithm': 'A* Graph-based',
         'nodes_explored': len([n for n in [goal_node] if n])
@@ -2088,6 +2211,10 @@ def build_direct_route_result(route_coords, route_km_cumulative, start_battery, 
         'highway_stops_passed': highway_stops_passed,
         'num_highway_stops': len(highway_stops_passed),
         'travel_events': travel_events,
+        
+        # ✅ GEOMETRY: Trả về tọa độ chi tiết
+        'geometry_coords': route_coords,  # Mảng [[lat, lon], ...] đầy đủ
+        
         'algorithm': 'Direct (No charging needed)'
     }
 

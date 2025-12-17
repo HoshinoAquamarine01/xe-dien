@@ -2084,32 +2084,15 @@
         z-index: 500; 
       }
 
-      /* --- FIX LỖI MARKER --- */
-
-/* 1. Cấu hình hiệu ứng chung */
-.gm-marker:hover .pin-drop, 
-.gm-marker:hover .pin-dot,
-.gm-marker:hover .pin-mini-icon,
-.gm-marker:hover .nearest-station-icon,
-.gm-marker:hover .pin-fail-marker { 
-  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-  box-shadow: 0 8px 16px rgba(0,0,0,0.3);
-  z-index: 999;
-}
-
-/* 2. NHÓM HÌNH TRÒN (Không xoay): Chỉ cần phóng to và bay lên */
-.gm-marker:hover .pin-dot,
-.gm-marker:hover .pin-mini-icon,
-.gm-marker:hover .nearest-station-icon {
-  transform: scale(1.15) translateY(-6px);
-}
-
-/* 3. NHÓM HÌNH GIỌT NƯỚC (Đang xoay -45deg): Phải giữ nguyên góc xoay */
-.gm-marker:hover .pin-drop,
-.gm-marker:hover .pin-fail-marker {
-  /* Quan trọng: Giữ rotate(-45deg) để không bị bật ngửa */
-  transform: rotate(-45deg) scale(1.15) translate(-4px, -4px); 
-}
+      .gm-marker:hover .pin-drop, 
+      .gm-marker:hover .pin-dot,
+      .gm-marker:hover .pin-mini-icon,
+      .gm-marker:hover .nearest-station-icon,
+      .gm-marker:hover .pin-fail-marker { 
+        transform: scale(1.15) translateY(-6px);
+        transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+      }
 
       /* Style cho Popup chuẩn Google Maps */
       .google-popup .mapboxgl-popup-content {
@@ -2569,9 +2552,8 @@
 </style>
     <script src="https://cdn.jsdelivr.net/npm/@goongmaps/goong-js@1.0.9/dist/goong-js.js"></script>
     <link
-      rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@goongmaps/goong-js@1.0.9/dist/goong-js.css"
-    />
+
   </head>
   <body>
     <div class="app-container">
@@ -3056,6 +3038,36 @@
         return poly;
       }
 
+      // Decode route polylines to GeoJSON coordinates [lon, lat]
+      function getRouteGeoJsonCoords(route) {
+        if (!route) return [];
+        
+        // Try step polylines first (most detailed)
+        if (Array.isArray(route.step_polylines) && route.step_polylines.length > 0) {
+          const coords = [];
+          route.step_polylines.forEach(polyline => {
+            if (polyline) {
+              const decoded = decodePolyline(polyline); // returns [[lat,lng], ...]
+              decoded.forEach(pt => coords.push([pt[1], pt[0]])); // swap to [lng,lat]
+            }
+          });
+          if (coords.length > 0) return coords;
+        }
+        
+        // Fallback to overview polyline
+        if (route.geometry_polyline) {
+          const decoded = decodePolyline(route.geometry_polyline);
+          return decoded.map(pt => [pt[1], pt[0]]); // swap to [lng,lat]
+        }
+        
+        // Last resort: geometry_coords (assume [lat,lon])
+        if (Array.isArray(route.geometry_coords)) {
+          return route.geometry_coords.map(c => [c[1], c[0]]);
+        }
+        
+        return [];
+      }
+
      function drawRouteOnGoong(routes, nearbyFeatures) {
         // 1. Dọn dẹp layer cũ
         // NOTE: Do not remove `infeasible-main` here to preserve any infeasible visualization
@@ -3109,7 +3121,7 @@
             type: "Feature",
             geometry: {
               type: "LineString",
-              coordinates: route.geometry_coords.map((c) => [c[1], c[0]]),
+              coordinates: getRouteGeoJsonCoords(route),
             },
           };
           const sourceId = `route-alt-${index}`;
@@ -3186,11 +3198,13 @@
         };
 
         const bestRoute = routes.find((r) => r.is_best) || routes[0];
+        const bestCoords = getRouteGeoJsonCoords(bestRoute);
+        console.log(`Route points: ${bestCoords.length}`);
         const bestGeoJSON = {
           type: "Feature",
           geometry: {
             type: "LineString",
-            coordinates: bestRoute.geometry_coords.map((c) => [c[1], c[0]]),
+            coordinates: bestCoords,
           },
         };
         map.addSource("route-best", { type: "geojson", data: bestGeoJSON });
@@ -3604,7 +3618,7 @@
             const sourceId = `route-alt-${i}`;
             const visibleLayerId = `layer-alt-${i}`;
             const clickLayerId = `${visibleLayerId}-click`;
-            const geoJSON = { type: 'Feature', geometry: { type: 'LineString', coordinates: route.geometry_coords.map((c) => [c[1], c[0]]) } };
+            const geoJSON = { type: 'Feature', geometry: { type: 'LineString', coordinates: getRouteGeoJsonCoords(route) } };
 
             // Update source data or create source
             if (map.getSource(sourceId)) {
@@ -3656,7 +3670,7 @@
         });
 
         // Add source and layers for selected route
-        const selGeo = { type: "Feature", geometry: { type: "LineString", coordinates: sel.geometry_coords.map((c) => [c[1], c[0]]) } };
+        const selGeo = { type: "Feature", geometry: { type: "LineString", coordinates: getRouteGeoJsonCoords(sel) } };
         map.addSource("route-best", { type: "geojson", data: selGeo });
         map.addLayer({ id: "route-casing", type: "line", source: "route-best", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": "#1557b0", "line-width": 10, "line-opacity": 0.8 } });
         map.addLayer({ id: "route-layer", type: "line", source: "route-best", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": "#1A73E8", "line-width": 6 } });
