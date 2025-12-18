@@ -93,6 +93,75 @@ try:
     toll_collection = db['toll_stations']
     toll_stations = list(toll_collection.find({}, {'_id': 0}))
 
+    # === DATA SANITIZATION: ensure lat/lon are floats and drop invalid entries ===
+    def sanitize_geo(items, name):
+        cleaned = []
+        removed = 0
+        for it in items:
+            try:
+                lat = it.get('lat') if it.get('lat') is not None else it.get('latitude')
+                lon = it.get('lon') if it.get('lon') is not None else it.get('longitude')
+                if lat is None or lon is None:
+                    removed += 1
+                    continue
+                latf = float(lat)
+                lonf = float(lon)
+                it['lat'] = latf
+                it['lon'] = lonf
+                cleaned.append(it)
+            except Exception:
+                removed += 1
+                continue
+        if removed > 0:
+            print(f"⚠️ Sanitized {removed} invalid {name} entries (removed)")
+        return cleaned
+
+    stations = sanitize_geo(stations, 'stations')
+    ferries = sanitize_geo(ferries, 'ferries')
+    highway_stations = sanitize_geo(highway_stations, 'highway_stations')
+    toll_stations = sanitize_geo(toll_stations, 'toll_stations')
+
+    # Helper: safe boolean parser for JSON inputs
+    def str2bool(v):
+        """Safely parse boolean-like inputs from JSON (accepts 'true'/'false' strings, 1/0, etc.)."""
+        if isinstance(v, bool):
+            return v
+        if v is None:
+            return False
+        if isinstance(v, str):
+            return v.strip().lower() in ('1', 'true', 't', 'yes', 'y')
+        if isinstance(v, (int, float)):
+            return v != 0
+        return bool(v)
+
+    # Additionally load highway nodes JSON (offline) - sanitized earlier if present
+    try:
+        with open('ev_database.highways.json', 'r', encoding='utf-8') as hf:
+            highway_nodes = json.load(hf)
+    except Exception:
+        highway_nodes = highway_nodes if 'highway_nodes' in globals() else []
+    # sanitize highway_nodes as well
+    if highway_nodes:
+        highway_nodes = sanitize_geo(highway_nodes, 'highway_nodes')
+
+
+    # Additionally load highway node dataset from JSON file (offline data integrated by user)
+    try:
+        with open('ev_database.highways.json', 'r', encoding='utf-8') as hf:
+            highway_nodes = json.load(hf)
+        print(f" Đã tải {len(highway_nodes)} điểm cao tốc (from ev_database.highways.json)")
+        if len(highway_nodes) > 0:
+            hw_coords = np.array([[float(h.get('lat')), float(h.get('lon'))] for h in highway_nodes if h.get('lat') and h.get('lon')])
+            highway_tree = cKDTree(hw_coords)
+            print(" Đã khởi tạo KD-Tree cho cao tốc")
+        else:
+            highway_nodes = []
+            highway_tree = None
+    except Exception as e:
+        print(f"⚠️ Không thể tải ev_database.highways.json: {e}")
+        highway_nodes = []
+        highway_tree = None
+
     # NẾU KHÔNG CÓ DỮ LIỆU → THÔNG BÁO
     if len(highway_stations) == 0:
         print(" Chưa có dữ liệu trạm cao tốc trong MongoDB")
@@ -108,14 +177,38 @@ try:
     print(f" Đã tải {len(highway_stations)} trạm dừng cao tốc")
     print(f" Đã tải {len(toll_stations)} trạm thu phí")
 
-    # TẠO KD-TREE CHO TRẠM SẠC (TỐI ƯU TÌM KIẾM)
+    # TẠO KD-TREE CHO TRẠM SẠC (TỐI ƯU TÌM KIẾM) - chỉ dùng station có lat/lon hợp lệ
     if len(stations) > 0:
-        station_coords = np.array([[s['lat'], s['lon']] for s in stations])
-        station_tree = cKDTree(station_coords)
-        print(" Đã khởi tạo KD-Tree cho trạm sạc")
+        valid_station_coords = []
+        for s in stations:
+            try:
+                if s.get('lat') is None or s.get('lon') is None:
+                    continue
+                valid_station_coords.append([float(s['lat']), float(s['lon'])])
+            except Exception:
+                continue
+        if valid_station_coords:
+            station_coords = np.array(valid_station_coords, dtype=float)
+            station_tree = cKDTree(station_coords)
+            print(" Đã khởi tạo KD-Tree cho trạm sạc")
+        else:
+            station_tree = None
+            print(" Không có trạm sạc hợp lệ để tạo KD-Tree")
     else:
         station_tree = None
         print(" Không có trạm sạc để tạo KD-Tree")
+
+    # TẠO KD-TREE CHO CAO TỐC (nếu có dữ liệu ev_database.highways.json)
+    if highway_nodes and len(highway_nodes) > 0:
+        try:
+            hw_coords = np.array([[h['lat'], h['lon']] for h in highway_nodes], dtype=float)
+            highway_tree = cKDTree(hw_coords)
+            print(f" Đã khởi tạo KD-Tree cho cao tốc ({len(hw_coords)} nodes)")
+        except Exception as e:
+            print(f"⚠️ Lỗi tạo KD-Tree cho cao tốc: {e}")
+            highway_tree = None
+    else:
+        highway_tree = None
 
 except Exception as e:
     print(f"❌ Lỗi kết nối MongoDB: {e}")
@@ -606,11 +699,47 @@ def get_route(start_coords, end_coords, options=None):
         user_filters = {
             'avoid_tolls': bool(options.get('avoid_tolls', False)),
             'avoid_highways': bool(options.get('avoid_highways', False)),
-            'avoid_ferries': bool(options.get('avoid_ferries', False))
+            'avoid_ferries': bool(options.get('avoid_ferries', False)),
+            'avoid_highway_stops': bool(options.get('avoid_highway_stops', False)),
         }
-
     if any(user_filters.values()):
         print(f"🔒 Applying user_filters to routing: {user_filters}")
+
+    # Helper: check if route (decoded coords) appears to use a motorway/highway segment
+    def route_has_highway_segment(route_coords, max_distance_km=0.05):
+        """Return True if any sampled route point is within max_distance_km of a highway node.
+        Uses `highway_tree` (JSON nodes) when available, otherwise falls back to `highway_stations` KD-tree.
+        """
+        if not route_coords:
+            return False
+        # degrees bound approx, 1 deg ~ 111 km
+        deg_bound = max(0.00001, max_distance_km / 111.0)
+        # sample to reduce queries
+        step = max(1, len(route_coords) // 200)
+        sampled = route_coords[::step]
+        try:
+            if 'highway_tree' in globals() and highway_tree is not None and len(highway_nodes) > 0:
+                for coord in sampled:
+                    # coord is (lat, lon)
+                    try:
+                        dist, idx = highway_tree.query((coord[0], coord[1]), k=1, distance_upper_bound=deg_bound)
+                        if dist != float('inf'):
+                            return True
+                    except Exception:
+                        continue
+            # fallback to highway_stations loaded from MongoDB
+            if 'highway_stations' in globals() and highway_stations and len(highway_stations) > 0:
+                for coord in sampled:
+                    for hw in highway_stations:
+                        try:
+                            d = geodesic((coord[0], coord[1]), (hw['lat'], hw['lon'])).km
+                            if d <= max_distance_km:
+                                return True
+                        except Exception:
+                            continue
+        except Exception:
+            return False
+        return False
 
     routes = get_route_from_goong(start_coords, end_coords, vehicle='car', user_filters=user_filters)
     
@@ -643,8 +772,18 @@ def get_route(start_coords, end_coords, options=None):
                             is_violation = True
                         if not is_violation and user_filters.get('avoid_ferries') and find_ferries_on_route(coords, max_distance_km=0.2):
                             is_violation = True
-                        if not is_violation and user_filters.get('avoid_highways') and find_highway_stations_on_route(coords, max_distance_km=0.1):
-                            is_violation = True
+                        # Check highway-related violations: prefer node-based detection using highway_tree or fall back to station detection
+                        if not is_violation and (user_filters.get('avoid_highways') or user_filters.get('avoid_highway_stops')):
+                            try:
+                                if route_has_highway_segment(coords, max_distance_km=0.05):
+                                    is_violation = True
+                                elif find_highway_stations_on_route(coords, max_distance_km=0.1):
+                                    # fallback conservative check
+                                    is_violation = True
+                            except Exception:
+                                # fallback to station-based detection
+                                if find_highway_stations_on_route(coords, max_distance_km=0.1):
+                                    is_violation = True
                     
                     if not is_violation:
                         best_valid_route_idx = idx
@@ -715,6 +854,25 @@ def get_route(start_coords, end_coords, options=None):
     
     if mapbox_routes:
         print(f"✅ Mapbox backup thành công!")
+    else:
+        # Soft fallback: If user requested a strict avoid (e.g., avoid_highways) and Mapbox returned no routes
+        # retry without excludes and mark returned routes as violating that filter (soft violation)
+        if user_filters.get('avoid_highways') or user_filters.get('avoid_tolls') or user_filters.get('avoid_ferries'):
+            print("⚠️ Mapbox returned no routes with excludes — retrying without excludes and marking as violated (soft fallback)")
+            retry_routes = get_route_from_mapbox(start_coords, end_coords, user_filters=None)
+            if retry_routes:
+                # annotate routes to indicate they violate requested filters
+                for rr in retry_routes:
+                    rr['violated_filters'] = [k for k, v in user_filters.items() if v]
+                    # Add a filter_feedback warning so UI will show it
+                    ff = rr.get('filter_feedback', [])
+                    ff.append({'type': 'warning', 'icon': '<span class="icon material-symbols-rounded" style="font-size:14px">warning</span>', 'text': 'Không thể tránh hoàn bộ các tuỳ chọn lọc'})
+                    rr['filter_feedback'] = ff
+                print("✅ Soft fallback obtained routes (marked as violated)")
+                ROUTE_CACHE[cache_key] = {'data': retry_routes, 'time': time.time()}
+                return retry_routes, None
+            else:
+                print("⚠️ Soft fallback also returned no routes — giving up on Mapbox backup")
         # Validate VN bounds
         def route_outside_vietnam(route):
             coords = []
@@ -989,28 +1147,42 @@ def find_toll_stations_on_route(route_coords, max_distance_km=0.1):
     added_toll_coords = []  # Để khử trùng lặp
     
     for toll in candidate_tolls:
-        toll_pos = (toll['lat'], toll['lon'])
+        try:
+            toll_pos = (float(toll['lat']), float(toll['lon']))
+        except Exception:
+            # Bad toll data, skip
+            continue
         
         # --- Khử trùng lặp địa lý (2km) ---
         is_duplicate = False
         for added_pos in added_toll_coords:
-            if geodesic(toll_pos, added_pos).km < 2.0:
-                is_duplicate = True
-                break
+            try:
+                ddup = geodesic(toll_pos, added_pos).km
+                if ddup < 2.0:
+                    is_duplicate = True
+                    break
+            except Exception:
+                continue
         if is_duplicate:
             continue
 
         # --- Tính khoảng cách ---
         min_dist = float('inf')
         closest_idx = 0
-        
+        any_success = False
         # Tìm điểm gần nhất trên đường
         for i, route_pt in enumerate(sampled_coords):
-            d = geodesic(toll_pos, route_pt).km
-            if d < min_dist:
-                min_dist = d
-                closest_idx = i
-        
+            try:
+                d = geodesic(toll_pos, route_pt).km
+                any_success = True
+                if d < min_dist:
+                    min_dist = d
+                    closest_idx = i
+            except Exception:
+                continue
+        # Nếu không thể tính khoảng cách vì dữ liệu hỏng, skip
+        if not any_success:
+            continue
         # Nếu khoảng cách < 100m (0.1km) -> Chấp nhận
         if min_dist <= max_distance_km:
             # Ước lượng km trên lộ trình
@@ -1066,25 +1238,38 @@ def find_ferries_on_route(route_coords, max_distance_km=0.2):
     added_ferry_coords = []
     
     for ferry in candidate_ferries:
-        ferry_pos = (ferry['lat'], ferry['lon'])
+        try:
+            ferry_pos = (float(ferry['lat']), float(ferry['lon']))
+        except Exception:
+            continue
         
         # Khử trùng lặp 3km
         is_dup = False
         for added in added_ferry_coords:
-            if geodesic(ferry_pos, added).km < 3.0:
-                is_dup = True
-                break
+            try:
+                if geodesic(ferry_pos, added).km < 3.0:
+                    is_dup = True
+                    break
+            except Exception:
+                continue
         if is_dup:
             continue
         
         # Tìm khoảng cách nhỏ nhất
         min_dist = float('inf')
         closest_idx = 0
+        any_success = False
         for i, pt in enumerate(sampled_coords):
-            d = geodesic(ferry_pos, pt).km
-            if d < min_dist:
-                min_dist = d
-                closest_idx = i
+            try:
+                d = geodesic(ferry_pos, pt).km
+                any_success = True
+                if d < min_dist:
+                    min_dist = d
+                    closest_idx = i
+            except Exception:
+                continue
+        if not any_success:
+            continue
         
         # Phà có thể lệch toạ độ nhiều hơn trạm thu phí, để 200m (0.2)
         if min_dist <= max_distance_km:
@@ -1095,8 +1280,12 @@ def find_ferries_on_route(route_coords, max_distance_km=0.2):
                 nums = re.findall(r'[\d,.]+', fee.replace(',', ''))
                 fee = int(float(nums[0])) if nums else 20000
             
-            # Ước lượng km trên lộ trình
-            km_on_route = (closest_idx / len(sampled_coords)) * geodesic(route_coords[0], route_coords[-1]).km * 1.3
+            # Ước lượng km trên lộ trình (defensive)
+            try:
+                route_len_km = geodesic(route_coords[0], route_coords[-1]).km
+            except Exception:
+                route_len_km = 0
+            km_on_route = (closest_idx / max(1, len(sampled_coords))) * route_len_km * 1.3
 
             ferries_on_route.append({
                 'ferry': ferry,
@@ -1138,13 +1327,22 @@ def find_highway_stations_on_route(route_coords, max_distance_km=0.1):
         
         min_distance = float('inf')
         closest_km = 0
-        
+        any_success = False
         for i, coord in enumerate(sampled_coords):
-            dist = geodesic(station_pos, coord).km
-            if dist < min_distance:
-                min_distance = dist
-                closest_km = (i / len(sampled_coords)) * geodesic(sampled_coords[0], sampled_coords[-1]).km * 1.3
-        
+            try:
+                dist = geodesic(station_pos, coord).km
+                any_success = True
+                if dist < min_distance:
+                    min_distance = dist
+                    try:
+                        route_len_km = geodesic(sampled_coords[0], sampled_coords[-1]).km
+                    except Exception:
+                        route_len_km = 0
+                    closest_km = (i / max(1, len(sampled_coords))) * route_len_km * 1.3
+            except Exception:
+                continue
+        if not any_success:
+            continue
         if min_distance <= max_distance_km:
             seen_highways.add(station_id)
             highways_on_route.append({
@@ -1505,8 +1703,8 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
     
     # Trường hợp 2: Không có trạm sạc nào
     if len(candidates) == 0:
-        # Tính điểm hết pin dự kiến
-        farthest_reachable_km = max_range_km * 0.85
+        # No stations near route: compute failure point metadata and return concise infeasibility
+        farthest_reachable_km = max_range_km * 0.95
         failure_idx = 0
         for i, km in enumerate(route_km_cumulative):
             if km <= farthest_reachable_km:
@@ -1515,65 +1713,38 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
                 break
         failure_point = route_coords[failure_idx]
         failure_km = route_km_cumulative[failure_idx]
-        
-        # Encode polylines
-        traveled_coords = route_coords[:failure_idx+1]
-        remaining_coords = route_coords[failure_idx:]
-        traveled_geometry = polyline.encode(traveled_coords, 5)
-        remaining_geometry = polyline.encode(remaining_coords, 5)
-        
-        # Tìm trạm gần nhất kể cả không với tới
-        nearest_station_to_failure = None
+        remaining_km = total_route_km - failure_km
+
+        nearest_station = None
         if station_tree is not None and len(stations) > 0:
             try:
                 distances, indices = station_tree.query(failure_point, k=1)
-                station = stations[indices[0] if isinstance(indices, np.ndarray) else indices]
-                dist_to_station = geodesic(failure_point, (station['lat'], station['lon'])).km
-                nearest_station_to_failure = {
-                    'name': station.get('name', 'Trạm sạc'),
-                    'lat': station['lat'],
-                    'lon': station['lon'],
-                    'power': station.get('power', 150),
-                    'distance_km': round(dist_to_station, 1)
+                idx = indices if isinstance(indices, (int, np.integer)) else indices[0]
+                st = stations[idx]
+                dist_to_st = geodesic(failure_point, (st['lat'], st['lon'])).km
+                nearest_station = {
+                    'name': st.get('name', 'Trạm sạc'),
+                    'distance_km': round(dist_to_st, 1),
+                    'address': st.get('address', 'Không xác định')
                 }
-            except:
-                pass
-        
+            except Exception:
+                nearest_station = None
+
         error_info = {
             "error": "infeasible",
-            "error_type": "no_stations_on_route",
+            "error_type": "battery_depleted",
             "severity": "critical",
-            "message": f"🔋 Không có trạm sạc nào trên tuyến đường!",
-            "details": f"Quãng đường {total_route_km:.0f}km nhưng không tìm thấy trạm sạc nào trong bán kính 12km dọc lộ trình.",
-            "location": {
-                "coords": list(failure_point),
-                "km_from_start": round(failure_km, 1),
-                "km_to_destination": round(total_route_km - failure_km, 1)
+            "message": "Không đủ năng lượng để hoàn thành hành trình",
+            "analysis": {
+                "total_dist": round(total_route_km, 1),
+                "max_range": round(max_range_km, 1),
+                "traveled": round(failure_km, 1),
+                "missing": round(remaining_km, 1),
+                "battery_start": start_battery,
+                "fail_coords": list(failure_point)
             },
-            "progress": {
-                "completed_km": round(failure_km, 1),
-                "total_km": round(total_route_km, 1),
-                "completion_percent": round((failure_km / total_route_km) * 100, 1) if total_route_km > 0 else 0
-            },
-            "battery_state": {
-                "current_percent": start_battery,
-                "max_range_km": max_range_km
-            },
-            "traveled_geometry": traveled_geometry,
-            "remaining_geometry": remaining_geometry,
-            # ✅ GEOMETRY CHI TIẾT (Để vẽ mượt mà)
-            "traveled_coords": traveled_coords,
-            "remaining_coords": remaining_coords,
-            "failure_point": {
-                "lat": failure_point[0],
-                "lon": failure_point[1]
-            },
-            "nearest_station_to_failure": nearest_station_to_failure,
-            "suggestions": [
-                "Thử tuyến đường khác có nhiều trạm sạc hơn",
-                "Sạc đầy pin 100% trước khi xuất phát",
-                "Kiểm tra lại dữ liệu trạm sạc trong hệ thống"
-            ]
+            "nearest_rescue": nearest_station,
+            "suggestion": "Không tìm thấy trạm sạc trên hành trình này"
         }
         return None, error_info
     
@@ -1782,95 +1953,53 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
     
     # === 5. XÂY DỰNG KẾT QUẢ TỪ BEST SOLUTION ===
     if best_solution is None:
-        # Không tìm thấy đường đi - TRẢ VỀ ENHANCED INFEASIBILITY RESPONSE
-        
-        # Tìm điểm dừng cuối cùng có thể đi được (điểm hết pin)
-        farthest_reachable_km = max_range_km * 0.85  # 85% tầm xa thực tế
+        # === 5. XỬ LÝ KHI KHÔNG TÌM THẤY ĐƯỜNG (INFEASIBLE) ===
+        # Trả về object đơn giản, chỉ metadata để Frontend hiển thị Modal (không vẽ geometry)
+
+        # Tính điểm hết pin dựa trên hiệu năng thực tế (95% buffer)
+        farthest_reachable_km = max_range_km * 0.95
         failure_idx = 0
-        
         for i, km in enumerate(route_km_cumulative):
             if km <= farthest_reachable_km:
                 failure_idx = i
             else:
                 break
-        
-        # 1. Xác định điểm cắt (failure_idx đã được tính ở trên)
-        # failure_idx là index của điểm cuối cùng mà xe có thể đến được
-        
+
         failure_point = route_coords[failure_idx]
         failure_km = route_km_cumulative[failure_idx]
-        
-        # 2. Cắt mảng tọa độ (Slice List) - GIẢI PHÁP "CẮT BÁNH MÌ"
-        # Nguyên tắc: Chỉ cắt list, không tính toán lại đường đi để đảm bảo khớp nối 100%
-        
-        # Đoạn đi được (Traveled): Từ đầu đến điểm chết (lấy cả điểm chết để nối liền)
-        traveled_subset = route_coords[:failure_idx+1]
-        
-        # Đoạn còn lại (Remaining): Từ điểm chết đến cuối
-        remaining_subset = route_coords[failure_idx:]
-        
-        # 3. Encode lại thành Polyline string để gửi xuống Frontend
-        traveled_geometry = polyline.encode(traveled_subset, 5)
-        remaining_geometry = polyline.encode(remaining_subset, 5)
-        
-        # Tìm trạm sạc gần nhất với điểm hết pin (kể cả không với tới được)
-        nearest_station_to_failure = None
+        remaining_km = total_route_km - failure_km
+
+        # Tìm trạm sạc gần nhất với điểm chết
+        nearest_station = None
         if station_tree is not None and len(stations) > 0:
             try:
-                distances, indices = station_tree.query(failure_point, k=3)
-                for station_idx in indices:
-                    station = stations[station_idx]
-                    dist_to_station = geodesic(failure_point, (station['lat'], station['lon'])).km
-                    nearest_station_to_failure = {
-                        'name': station.get('name', 'Trạm sạc'),
-                        'lat': station['lat'],
-                        'lon': station['lon'],
-                        'power': station.get('power', 150),
-                        'distance_km': round(dist_to_station, 1),
-                        'unreachable_by_km': round(dist_to_station - (max_range_km - failure_km), 1)
-                    }
-                    break
-            except:
-                pass
-        
+                distances, indices = station_tree.query(failure_point, k=1)
+                idx = indices if isinstance(indices, (int, np.integer)) else indices[0]
+                st = stations[idx]
+                dist_to_st = geodesic(failure_point, (st['lat'], st['lon'])).km
+                nearest_station = {
+                    'name': st.get('name', 'Trạm sạc'),
+                    'distance_km': round(dist_to_st, 1),
+                    'address': st.get('address', 'Không xác định')
+                }
+            except Exception:
+                nearest_station = None
+
         error_info = {
             "error": "infeasible",
-            "error_type": "no_feasible_path",
+            "error_type": "battery_depleted",
             "severity": "critical",
-            "message": f"🔋 Không tìm được lộ trình khả thi!",
-            "details": f"Thuật toán A* không tìm được đường đi với pin {start_battery}% trên quãng đường {total_route_km:.0f}km.",
-            "battery_state": {
-                "current_percent": start_battery,
-                "max_range_km": max_range_km
+            "message": "Không đủ năng lượng để hoàn thành hành trình",
+            "analysis": {
+                "total_dist": round(total_route_km, 1),
+                "max_range": round(max_range_km, 1),
+                "traveled": round(failure_km, 1),
+                "missing": round(remaining_km, 1),
+                "battery_start": start_battery,
+                "fail_coords": list(failure_point)
             },
-            "traveled_geometry": traveled_geometry,
-            "remaining_geometry": remaining_geometry,
-            # ✅ GEOMETRY CHI TIẾT
-            "traveled_coords": traveled_subset,
-            "remaining_coords": remaining_subset,
-            "location": {
-                "coords": list(failure_point),
-                "km_from_start": round(failure_km, 1),
-                "km_to_destination": round(total_route_km - failure_km, 1)
-            },
-            "progress": {
-                "completed_km": round(failure_km, 1),
-                "total_km": round(total_route_km, 1),
-                "completion_percent": round((failure_km / total_route_km) * 100, 1) if total_route_km > 0 else 0
-            },
-            # ENHANCED: Polyline geometry cho map visualization
-            "traveled_geometry": traveled_geometry,
-            "remaining_geometry": remaining_geometry,
-            "failure_point": {
-                "lat": failure_point[0],
-                "lon": failure_point[1]
-            },
-            "nearest_station_to_failure": nearest_station_to_failure,
-            "suggestions": [
-                f"Sạc pin lên ít nhất {min(100, int((total_route_km / max_range_km) * 100) + 20)}% trước khi xuất phát",
-                "Chọn xe có dung lượng pin lớn hơn",
-                "Thử tuyến đường có nhiều trạm sạc hơn"
-            ]
+            "nearest_rescue": nearest_station,
+            "suggestion": "Dung lượng pin hoặc mức tiêu thụ của xe không cho phép đi quãng đường này mà không có trạm sạc phù hợp."
         }
         return None, error_info
     
@@ -1988,7 +2117,7 @@ def reconstruct_astar_result(goal_node, nodes, route_coords, route_km_cumulative
             'km': toll_info.get('km_on_route', 0)
         })
         
-        is_violation = bool(user_filters.get('avoid_tolls', False))
+        is_violation = str2bool(user_filters.get('avoid_tolls', False))
         travel_events.append({
             'type': 'toll',
             'name': toll.get('name', 'Trạm thu phí'),
@@ -2011,7 +2140,7 @@ def reconstruct_astar_result(goal_node, nodes, route_coords, route_km_cumulative
             'fee': fee,
             'km': ferry_info.get('km_on_route', 0)
         })
-        is_violation = bool(user_filters.get('avoid_ferries', False))
+        is_violation = str2bool(user_filters.get('avoid_ferries', False))
         travel_events.append({
             'type': 'ferry',
             'name': ferry.get('name', 'Phà'),
@@ -2023,23 +2152,36 @@ def reconstruct_astar_result(goal_node, nodes, route_coords, route_km_cumulative
         })
     
     highway_stops_passed = []
-    for hw_info in highways_on_route:
-        station = hw_info['station']
-        highway_stops_passed.append({
-            'name': station.get('name', 'Trạm dừng'),
-            'km': hw_info.get('km_on_route', 0)
-        })
-        is_violation = bool(user_filters.get('avoid_highways', False))
-        travel_events.append({
-            'type': 'highway_stop',
-            'name': station.get('name', 'Trạm dừng cao tốc'),
-            'cost': 0,
-            'km': hw_info.get('km_on_route', 0),
-            'coords': [station['lat'], station['lon']],
-            'details': {'amenities': station.get('amenities', [])},
-            'warning': is_violation
-        })
-    
+    try:
+        for hw_info in highways_on_route:
+            station = hw_info.get('station', {})
+            km_on_route = hw_info.get('km_on_route', 0)
+            highway_stops_passed.append({
+                'name': station.get('name', 'Trạm dừng'),
+                'km': km_on_route
+            })
+
+            # Warn if user asked to avoid highways as road OR avoid highway stops specifically
+            is_violation = str2bool(user_filters.get('avoid_highways', False) or user_filters.get('avoid_highway_stops', False))
+
+            coords = None
+            try:
+                if station.get('lat') is not None and station.get('lon') is not None:
+                    coords = [float(station.get('lat')), float(station.get('lon'))]
+            except Exception:
+                coords = None
+
+            travel_events.append({
+                'type': 'highway_stop',
+                'name': station.get('name', 'Trạm dừng'),
+                'km': km_on_route,
+                'coords': coords,
+                'details': {'amenities': station.get('amenities', [])},
+                'warning': is_violation
+            })
+    except Exception as e:
+        print(f"⚠️ Lỗi khi xử lý highway_stops_passed: {e}")
+
     # Sắp xếp travel events theo km
     travel_events.sort(key=lambda x: x['km'])
     
@@ -2100,68 +2242,95 @@ def build_direct_route_result(route_coords, route_km_cumulative, start_battery, 
     final_battery = start_battery - battery_consumed
 
     # Tính phí cầu đường, phà
-    tolls_on_route = find_toll_stations_on_route(route_coords, max_distance_km=0.1)
-    ferries_on_route = find_ferries_on_route(route_coords, max_distance_km=0.2)
-    highways_on_route = find_highway_stations_on_route(route_coords, max_distance_km=0.1)
+    try:
+        tolls_on_route = find_toll_stations_on_route(route_coords, max_distance_km=0.1)
+    except Exception as e:
+        print(f"⚠️ Lỗi khi tìm tolls_on_route: {e}")
+        tolls_on_route = []
+    try:
+        ferries_on_route = find_ferries_on_route(route_coords, max_distance_km=0.2)
+    except Exception as e:
+        print(f"⚠️ Lỗi khi tìm ferries_on_route: {e}")
+        ferries_on_route = []
+    try:
+        highways_on_route = find_highway_stations_on_route(route_coords, max_distance_km=0.1)
+    except Exception as e:
+        print(f"⚠️ Lỗi khi tìm highways_on_route: {e}")
+        highways_on_route = []
 
     total_toll_cost = 0
     toll_stations_passed = []
     travel_events = []
 
-    for toll_info in tolls_on_route:
-        toll = toll_info['station']
-        fee = toll_info.get('fee', DEFAULT_TOLL_FEE)
-        if isinstance(fee, str):
-            import re
-            numbers = re.findall(r'[\d,.]+', fee.replace(',', ''))
-            fee = int(float(numbers[0])) if numbers else DEFAULT_TOLL_FEE
+    # Defensive: when computing toll/ferry/travel_events, isolate errors so route remains valid
+    try:
+        for toll_info in tolls_on_route:
+            toll = toll_info['station']
+            fee = toll_info.get('fee', DEFAULT_TOLL_FEE)
+            if isinstance(fee, str):
+                import re
+                numbers = re.findall(r'[\d,.]+', fee.replace(',', ''))
+                fee = int(float(numbers[0])) if numbers else DEFAULT_TOLL_FEE
 
-        total_toll_cost += fee
-        toll_stations_passed.append({
-            'name': toll.get('name', 'Trạm thu phí'),
-            'highway': toll.get('highway', 'N/A'),
-            'fee': fee,
-            'km': toll_info.get('km_on_route', 0)
-        })
+            total_toll_cost += fee
+            toll_stations_passed.append({
+                'name': toll.get('name', 'Trạm thu phí'),
+                'highway': toll.get('highway', 'N/A'),
+                'fee': fee,
+                'km': toll_info.get('km_on_route', 0)
+            })
 
-        # === Gắn cờ warning nếu user yêu cầu tránh trạm thu phí ===
-        is_violation = bool(user_filters.get('avoid_tolls', False))
+            # === Gắn cờ warning nếu user yêu cầu tránh trạm thu phí ===
+            is_violation = bool(user_filters.get('avoid_tolls', False))
 
-        travel_events.append({
-            'type': 'toll',
-            'name': toll.get('name', 'Trạm thu phí'),
-            'cost': fee,
-            'km': toll_info.get('km_on_route', 0),
-            'coords': [toll['lat'], toll['lon']],
-            'details': {'highway': toll.get('highway', 'N/A')},
-            'warning': is_violation
-        })
+            travel_events.append({
+                'type': 'toll',
+                'name': toll.get('name', 'Trạm thu phí'),
+                'cost': fee,
+                'km': toll_info.get('km_on_route', 0),
+                'coords': [toll.get('lat'), toll.get('lon')] if toll.get('lat') and toll.get('lon') else None,
+                'details': {'highway': toll.get('highway', 'N/A')},
+                'warning': is_violation
+            })
+    except Exception as e:
+        print(f"⚠️ Lỗi khi tính toán tolls (bỏ qua chi tiết): {e}")
+        total_toll_cost = 0
+        tolls_on_route = []
 
     total_ferry_cost = 0
     ferries_passed = []
 
-    for ferry_info in ferries_on_route:
-        ferry = ferry_info['ferry']
-        fee = ferry_info.get('fee', 50000)
-        total_ferry_cost += fee
-        ferries_passed.append({
-            'name': ferry.get('name', 'Phà'),
-            'fee': fee,
-            'km': ferry_info.get('km_on_route', 0)
-        })
+    try:
+        for ferry_info in ferries_on_route:
+            ferry = ferry_info['ferry']
+            fee = ferry_info.get('fee', 50000)
+            if isinstance(fee, str):
+                import re
+                nums = re.findall(r'[\d,.]+', fee.replace(',', ''))
+                fee = int(float(nums[0])) if nums else 50000
+            total_ferry_cost += fee
+            ferries_passed.append({
+                'name': ferry.get('name', 'Phà'),
+                'fee': fee,
+                'km': ferry_info.get('km_on_route', 0)
+            })
 
-        # === Gắn cờ warning nếu user yêu cầu tránh phà ===
-        is_violation = bool(user_filters.get('avoid_ferries', False))
+            # === Gắn cờ warning nếu user yêu cầu tránh phà ===
+            is_violation = bool(user_filters.get('avoid_ferries', False))
 
-        travel_events.append({
-            'type': 'ferry',
-            'name': ferry.get('name', 'Phà'),
-            'cost': fee,
-            'km': ferry_info.get('km_on_route', 0),
-            'coords': [ferry['lat'], ferry['lon']],
-            'details': {'crossing_time_min': ferry.get('crossing_time', 15)},
-            'warning': is_violation
-        })
+            travel_events.append({
+                'type': 'ferry',
+                'name': ferry.get('name', 'Phà'),
+                'cost': fee,
+                'km': ferry_info.get('km_on_route', 0),
+                'coords': [ferry.get('lat'), ferry.get('lon')] if ferry.get('lat') and ferry.get('lon') else None,
+                'details': {'crossing_time_min': ferry.get('crossing_time', 15)},
+                'warning': is_violation
+            })
+    except Exception as e:
+        print(f"⚠️ Lỗi khi tính toán ferries (bỏ qua chi tiết): {e}")
+        total_ferry_cost = 0
+        ferries_on_route = []
 
     highway_stops_passed = []
     for hw_info in highways_on_route:
@@ -2171,8 +2340,8 @@ def build_direct_route_result(route_coords, route_km_cumulative, start_battery, 
             'km': hw_info.get('km_on_route', 0)
         })
 
-        # === Gắn cờ warning nếu user yêu cầu tránh đường cao tốc ===
-        is_violation = bool(user_filters.get('avoid_highways', False))
+        # === Gắn cờ warning nếu user yêu cầu tránh đường cao tốc hoặc tránh trạm dừng chân ===
+        is_violation = bool(user_filters.get('avoid_highways', False) or user_filters.get('avoid_highway_stops', False))
 
         travel_events.append({
             'type': 'highway_stop',
@@ -2447,6 +2616,7 @@ def index():
 @app.route('/route', methods=['POST'])
 def find_route():
     data = request.json
+    print(f"🔍 DEBUG DATA RECEIVE: {data}")
     start_addr, end_addr = data.get('start'), data.get('end')
     
     try:
@@ -2540,40 +2710,71 @@ def find_route():
         if direct_distance > 1500:
             print(f"CẢNH BÁO: Quãng đường rất xa ({direct_distance:.0f}km)")
         
-        # GET ROUTE STRATEGY: MULTI-CANDIDATE COMPETITION (Tier 1 vs Tier 2 Logic)
-        # Thay vì chỉ gọi 1 lần với filters, ta gọi 2 lần:
-        # 1. Route "Clean": Không filter (để tìm đường ngắn nhất/nhanh nhất thực tế)
-        # 2. Route "Avoid": Có filter (nếu user chọn avoid)
-        # Sau đó so sánh kết quả thực tế (Cost, Distance) để chọn ra cái tốt nhất theo Priority.
-        
+        # GET ROUTE STRATEGY: STRICT FILTER FIRST, THEN LOOSE FALLBACK
+        # - If user set any filters, try Strict mode (respect filters).
+        # - If Strict fails (no routes), try Loose mode (no filters). If Loose succeeds, return
+        #   a special 'strict_filter_blocking' response with fallback_data so UI can ask the user.
         route_start = time.time()
         log_status("Đang tìm đường đi tối ưu (Goong API)...")
-        
+
         candidate_routes_raw = []
-        
-        # 1. Luôn lấy Route "Clean" (Baseline) - Bất chấp filters
-        # Đây là ứng viên cho "Shortest Distance" hoặc "Lowest Cost" nếu đường vòng quá đắt
-        print(f"   🏃 Đang tìm Route Baseline (bỏ qua filters)...")
-        clean_routes, _ = get_route(start_coords, end_coords, options={})
-        if clean_routes:
-            for r in clean_routes:
-                r['source_type'] = 'baseline' # Đánh dấu nguồn
-            candidate_routes_raw.extend(clean_routes)
-            
-        # 2. Nếu user có chọn filters, lấy thêm Route "Avoid"
+
+        # Detect whether any filters are active (safely parsed)
         user_filters_active = any([
-            data.get('avoid_tolls'), 
-            data.get('avoid_highways'), 
-            data.get('avoid_ferries')
+            str2bool(data.get('avoid_tolls', False)),
+            str2bool(data.get('avoid_highways', False)),
+            str2bool(data.get('avoid_ferries', False)),
+            str2bool(data.get('avoid_highway_stops', False))
         ])
-        
+
         if user_filters_active:
-            print(f"   🛡️ Đang tìm Route Avoid (tuân thủ filters)...")
-            avoid_routes, _ = get_route(start_coords, end_coords, data)
-            if avoid_routes:
-                for r in avoid_routes:
+            # 1) Try Strict Mode (respect filters)
+            print(f"   🔒 Thử Strict routes (tuân thủ filters)...")
+            strict_routes, strict_err = get_route(start_coords, end_coords, data)
+            if strict_routes:
+                for r in strict_routes:
                     r['source_type'] = 'avoid_strict'
-                candidate_routes_raw.extend(avoid_routes)
+                candidate_routes_raw.extend(strict_routes)
+            else:
+                # 2) No strict routes found -> try loose (no filters)
+                print("   ⚠️ Không tìm thấy lộ trình thỏa bộ lọc nghiêm ngặt — thử chế độ lỏng (bật filters = False)...")
+                loose_routes, loose_err = get_route(start_coords, end_coords, options={})
+                if loose_routes:
+                    # Found routes but blocked by filters: return a structured infeasibility with fallback_data
+                    blocked_filters = [k for k in ['avoid_tolls','avoid_highways','avoid_ferries','avoid_highway_stops'] if str2bool(data.get(k, False))]
+                    return jsonify({
+                        'status': 'warning',
+                        'infeasibility': {
+                            'error_type': 'strict_filter_blocking',
+                            'severity': 'warning',
+                            'message': 'Không tìm thấy lộ trình thỏa bộ lọc đã chọn.',
+                            'details': 'Hệ thống tìm thấy lộ trình khả thi nếu bỏ một số bộ lọc đã chọn.',
+                            'blocked_filters': blocked_filters,
+                            'actions': [
+                                {
+                                    'code': 'retry_ignore_filters',
+                                    'label': 'Xem lộ trình có vi phạm',
+                                    'params': {'force_ignore': True}
+                                }
+                            ]
+                        },
+                        # Optional optimization: include loose route candidates so frontend can show immediately
+                        'fallback_data': {
+                            'routes': loose_routes
+                        }
+                    }), 200
+                else:
+                    # No route even in loose mode — fall through and the normal infeasibility handling will apply
+                    print("   ❌ Không tìm thấy lộ trình ngay cả khi bỏ filters.")
+        else:
+            # If user did not set filters, perform the usual baseline lookup
+            print(f"   🏃 Đang tìm Route Baseline (bỏ qua filters)...")
+            clean_routes, _ = get_route(start_coords, end_coords, options={})
+            if clean_routes:
+                for r in clean_routes:
+                    r['source_type'] = 'baseline'
+                candidate_routes_raw.extend(clean_routes)
+
         
         print(f"Routing API: {time.time() - route_start:.1f}s")
         
@@ -2625,9 +2826,10 @@ def find_route():
         
         # Build user filters object for A* (để tính warning/penalty)
         user_filters_dict = {
-            'avoid_tolls': bool(data.get('avoid_tolls', False)),
-            'avoid_ferries': bool(data.get('avoid_ferries', False)),
-            'avoid_highways': bool(data.get('avoid_highways', False))
+            'avoid_tolls': str2bool(data.get('avoid_tolls', False)),
+            'avoid_ferries': str2bool(data.get('avoid_ferries', False)),
+            'avoid_highways': str2bool(data.get('avoid_highways', False)),
+            'avoid_highway_stops': str2bool(data.get('avoid_highway_stops', False))
         }
         
         for idx, base_route in enumerate(final_candidates):
@@ -2645,12 +2847,89 @@ def find_route():
                 else:
                     route_coords = polyline.decode(base_route['geometry'])
                 
-                route_distance_km = base_route['distance'] / 1000
-                source_type = base_route.get('source_type', 'unknown')
-                
-                log_status(f"Đang phân tích lộ trình {idx+1}/{len(final_candidates)} ({source_type})...")
-                
-                # Chạy A*
+                # === PHÁT HIỆN CAO TỐC THEO DỮ LIỆU HIGHWAY NODES (ev_database.highways.json) ===
+                detected_highways = set()
+                used_alternative_for_highways = False
+                used_soft_fallback_for_highways = False
+                highway_info = []
+                highway_warnings = []
+                if 'highway_tree' in globals() and highway_tree is not None and route_coords:
+                    step = max(1, len(route_coords) // 500)
+                    sampled = route_coords[::step]
+                    for coord in sampled:
+                        try:
+                            dist, idx_hw = highway_tree.query(coord, k=1, distance_upper_bound=0.0002)
+                            if dist != float('inf') and idx_hw < len(highway_nodes):
+                                hw_info = highway_nodes[idx_hw]
+                                hw_name = hw_info.get('name') or "Không có tên"
+                                if hw_name != "Không có tên":
+                                    detected_highways.add(hw_name)
+                        except Exception:
+                            continue
+                    # Keep 'highway_info' for context (always), but only expose 'warnings' if user explicitly requested to avoid highways
+                    highway_info = sorted(detected_highways)
+                    if detected_highways:
+                        log_status(f"⚠️ Phát hiện lộ trình đi qua cao tốc: {', '.join(highway_info)}")
+
+                        # Nếu user yêu cầu né cao tốc, thử Mapbox exclude=motorway để lấy thay thế
+                        if user_filters_dict.get('avoid_highways'):
+                            highway_warnings = highway_info
+                            log_status("🔄 Thử tìm lộ trình tránh cao tốc bằng Mapbox...")
+                            alt_routes = get_route_from_mapbox(start_coords, end_coords, user_filters={'avoid_highways': True})
+                            if alt_routes:
+                                alt_geom = alt_routes[0].get('geometry')
+                                alt_coords = []
+                                if isinstance(alt_geom, str) and alt_geom:
+                                    try:
+                                        alt_coords = polyline.decode(alt_geom)
+                                    except Exception:
+                                        try:
+                                            alt_coords = polyline.decode(alt_geom, precision=6)
+                                        except Exception:
+                                            alt_coords = []
+                                elif isinstance(alt_geom, list):
+                                    alt_coords = alt_geom
+
+                                # Kiểm tra lại trên lộ trình thay thế
+                                alt_detected = set()
+                                if alt_coords and 'highway_tree' in globals() and highway_tree is not None:
+                                    step2 = max(1, len(alt_coords) // 500)
+                                    for coord2 in alt_coords[::step2]:
+                                        try:
+                                            dist2, idx2 = highway_tree.query(coord2, k=1, distance_upper_bound=0.0002)
+                                            if dist2 != float('inf') and idx2 < len(highway_nodes):
+                                                name2 = highway_nodes[idx2].get('name') or "Không có tên"
+                                                if name2 != "Không có tên":
+                                                    alt_detected.add(name2)
+                                        except Exception:
+                                            continue
+
+                                if not alt_detected:
+                                    log_status("✅ Đã tìm được lộ trình thay thế tránh cao tốc bằng Mapbox.")
+                                    base_route = alt_routes[0]
+                                    if base_route.get('steps'):
+                                        route_coords = decode_full_route_geometry(base_route['steps'])
+                                    else:
+                                        route_coords = polyline.decode(base_route['geometry'])
+                                    used_alternative_for_highways = True
+                                else:
+                                    # Nếu Mapbox trả route nhưng vẫn có cao tốc, báo cảnh báo
+                                    log_status(f"⚠️ Không thể né hoàn toàn cao tốc: {', '.join(sorted(alt_detected))}")
+                            else:
+                                # Soft fallback: nếu Mapbox không trả lộ trình với exclude, thử lại không exclude
+                                log_status("⚠️ Mapbox không trả lộ trình thay thế tránh cao tốc — thử soft fallback (không exclude)...")
+                                soft_retry = get_route_from_mapbox(start_coords, end_coords, user_filters=None)
+                                if soft_retry:
+                                    log_status("⚠️ Soft fallback: sử dụng lộ trình không exclude, đánh dấu vi phạm avoid_highways")
+                                    base_route = soft_retry[0]
+                                    if base_route.get('steps'):
+                                        route_coords = decode_full_route_geometry(base_route['steps'])
+                                    else:
+                                        route_coords = polyline.decode(base_route.get('geometry', '') or '')
+                                    used_soft_fallback_for_highways = True
+                                else:
+                                    log_status("⚠️ Mapbox soft fallback cũng không trả lộ trình")
+
                 result, err = a_star_ev_routing(
                     start_coords, 
                     end_coords, 
@@ -2663,7 +2942,8 @@ def find_route():
                 
                 if result:
                     # Gán thêm thông tin gốc để debug
-                    result['source_type'] = source_type
+                    # Lấy source_type từ object base_route, nếu không có thì để mặc định
+                    result['source_type'] = base_route.get('source_type', 'unknown')
                     
                     raw_steps = base_route.get('steps', [])
                     turn_by_turn = format_turn_by_turn(raw_steps)
@@ -2686,20 +2966,42 @@ def find_route():
                     elif user_filters_dict['avoid_ferries']:
                         filter_feedback.append({'type': 'success', 'icon': '<span class="icon material-symbols-rounded" style="font-size:14px">directions_boat</span>', 'text': 'Đã tránh phà'})
 
+                    # Highway stops (rest areas) filter feedback
+                    if user_filters_dict.get('avoid_highway_stops') and result.get('num_highway_stops', 0) > 0:
+                        violation_count += result.get('num_highway_stops', 0)
+                        filter_feedback.append({'type': 'warning', 'icon': '<span class="icon material-symbols-rounded" style="font-size:14px">warning</span>', 'text': f"Vẫn phải qua {result.get('num_highway_stops', 0)} trạm dừng chân"})
+                    elif user_filters_dict.get('avoid_highway_stops'):
+                        filter_feedback.append({'type': 'success', 'icon': '<span class="icon material-symbols-rounded" style="font-size:14px">check_circle</span>', 'text': 'Đã tránh trạm dừng chân'})
+
+                    # Motorway/highway detection feedback (using highway_nodes)
+                    if highway_warnings:
+                        if user_filters_dict.get('avoid_highways'):
+                            if used_alternative_for_highways:
+                                filter_feedback.append({'type': 'success', 'icon': '<span class="icon material-symbols-rounded" style="font-size:14px">check_circle</span>', 'text': 'Đã tránh cao tốc'})
+                            elif used_soft_fallback_for_highways:
+                                filter_feedback.append({'type': 'warning', 'icon': '<span class="icon material-symbols-rounded" style="font-size:14px">warning</span>', 'text': f"Không thể tránh hoàn toàn cao tốc — sử dụng lộ trình có cao tốc: {', '.join(highway_warnings)}"})
+                    elif user_filters_dict.get('avoid_highways'):
+                        filter_feedback.append({'type': 'success', 'icon': '<span class="icon material-symbols-rounded" style="font-size:14px">check_circle</span>', 'text': 'Đã tránh cao tốc'})
+
                     result['violation_count'] = violation_count
 
                     routes_data.append({
                         'name': f'Route {idx + 1}',
-                        'route': base_route, 
+                        'route': base_route,
                         'coords': route_coords,
-                        'stops': result['charging_stops'], 
-                        'metrics': result, 
+                        'stops': result['charging_stops'],
+                        'metrics': result,
                         'feasible': True,
                         'color': '#94a3b8',
                         'is_best': False,
                         'instructions': turn_by_turn,
                         'segments': road_segments,
-                        'filter_feedback': filter_feedback
+                        'filter_feedback': filter_feedback,
+                        # Provide full highway info (context), but only expose warnings if user requested avoid_highways
+                        'highway_info': highway_info,
+                        'highway_warnings': highway_warnings if user_filters_dict.get('avoid_highways') else [],
+                        'used_alternative_for_highways': used_alternative_for_highways,
+                        'used_soft_fallback_for_highways': used_soft_fallback_for_highways
                     })
                 else:
                     if isinstance(err, dict) and err.get('error') == 'infeasible':
@@ -2749,20 +3051,24 @@ def find_route():
         
         def get_sort_key(item):
             m = item['metrics']
-            violation = m.get('violation_count', 0) > 0
-            
+            # Violation score: number of filter violations (0 is best)
+            violation_score = m.get('violation_count', 0)
+
+            # Primary value depends on chosen priority
             if priority == 'cost':
-                # Nếu vi phạm filter, cộng thêm penalty ảo vào cost để so sánh
-                adjusted_cost = m.get('total_cost', 0) + (PENALTY_COST if violation else 0)
-                return adjusted_cost
+                primary_value = m.get('total_cost', 0)
             elif priority == 'distance':
-                adjusted_dist = m['total_distance'] + (PENALTY_DIST if violation else 0)
-                return adjusted_dist
+                primary_value = m.get('total_distance', 0)
             elif priority == 'charges':
-                return (m['num_charges'], m['total_time'])
-            else: # time
-                adjusted_time = m['total_time'] + (PENALTY_TIME if violation else 0)
-                return adjusted_time
+                # For charges prefer fewer charges, then lower time
+                primary_value = (m.get('num_charges', 0), m.get('total_time', 0))
+            else:  # 'time' or default
+                primary_value = m.get('total_time', 0)
+
+            # Return a tuple so Python sorts by violation first, then by priority
+            if isinstance(primary_value, tuple):
+                return (violation_score,) + primary_value
+            return (violation_score, primary_value)
 
         routes_data.sort(key=get_sort_key)
         
@@ -2788,12 +3094,13 @@ def find_route():
         
         nearby_charging_stations = find_charging_stations_near_route(best_route_coords, max_distance_km=5)
         
-        avoid_ferries = data.get('avoid_ferries', False)
-        avoid_highways = data.get('avoid_highways', False)
-        avoid_tolls = data.get('avoid_tolls', False)
+        avoid_ferries = str2bool(data.get('avoid_ferries', False))
+        avoid_highways = str2bool(data.get('avoid_highways', False))
+        avoid_tolls = str2bool(data.get('avoid_tolls', False))
         
         nearby_ferries = find_ferries_near_route(best_route_coords, max_distance_km=5) if avoid_ferries else []
-        nearby_highway_stations = find_highway_stations_near_route(best_route_coords, max_distance_km=3) if not avoid_highways else []
+        # Always locate nearby highway stations (we need their coords to show warnings/highlight mandatory segments)
+        nearby_highway_stations = find_highway_stations_near_route(best_route_coords, max_distance_km=3)
         nearby_toll_stations = find_toll_stations_near_route(best_route_coords, max_distance_km=2) if avoid_tolls else []
         
         print(f"⏱️ Tìm trạm gần đường: {time.time() - nearby_start:.1f}s")
@@ -2805,7 +3112,8 @@ def find_route():
         nearby_data = {
             "charging": [{'lat': s['station']['lat'], 'lon': s['station']['lon'], 'name': s['station']['name'], 'type': s['station'].get('type'), 'power': s['station'].get('power')} for s in nearby_charging_stations],
             "ferries": [{'lat': f['ferry']['lat'], 'lon': f['ferry']['lon'], 'name': f['ferry']['name']} for f in nearby_ferries] if nearby_ferries else [],
-            "tolls": [{'lat': t['station']['lat'], 'lon': t['station']['lon'], 'name': t['station']['name']} for t in nearby_toll_stations] if nearby_toll_stations else []
+            "tolls": [{'lat': t['station']['lat'], 'lon': t['station']['lon'], 'name': t['station']['name']} for t in nearby_toll_stations] if nearby_toll_stations else [],
+            "highways": [{'lat': h['station']['lat'], 'lon': h['station']['lon'], 'name': h['station']['name'], 'highway': h['station'].get('highway'), 'address': h['station'].get('address'), 'amenities': h['station'].get('amenities')} for h in nearby_highway_stations] if nearby_highway_stations else []
         }
         
         print(f"⏱️ Chuẩn bị dữ liệu: {time.time() - json_start:.1f}s")
@@ -2826,7 +3134,9 @@ def find_route():
                 'travel_events': r['metrics'].get('travel_events', []),
                 'color': r['color'],
                 'filter_feedback': r.get('filter_feedback', []),
-                
+                'highway_warnings': r.get('highway_warnings', []),
+                'used_alternative_for_highways': r.get('used_alternative_for_highways', False),
+
                 # QUAN TRỌNG: Gửi tọa độ thô xuống để JS vẽ
                 'geometry_coords': r['coords'] 
             } for r in routes_data],
@@ -2839,29 +3149,147 @@ def find_route():
         traceback.print_exc()
         return jsonify({"error": f"Lỗi hệ thống: {str(e)}"}), 500
 
-def find_highway_stations_near_route(route_coords, max_distance_km=3):
-    """Tìm trạm cao tốc - TỐI ƯU"""
-    if len(highway_stations) == 0:
-        return []
-    
-    num_samples = min(10, len(route_coords))
-    step = max(1, len(route_coords) // num_samples)
-    sampled_coords = route_coords[::step]
-    
-    nearby_stations = []
-    
-    for station in highway_stations:
-        station_pos = (station['lat'], station['lon'])
-        min_distance = min(geodesic(station_pos, coord).km for coord in sampled_coords)
-        
-        if min_distance <= max_distance_km:
-            nearby_stations.append({
-                'station': station,
-                'distance_to_route': round(min_distance, 2)
+
+@app.route('/route-debug', methods=['POST'])
+def route_debug():
+    """Debug endpoint: returns geometry statistics and highway stop counts for candidate routes.
+    Useful to reproduce quality issues (e.g., Hanoi -> Da Nang) without running full A*.
+    """
+    data = request.json
+    start_addr = data.get('start')
+    end_addr = data.get('end')
+    # Allow passing coords directly: start_coords: [lat, lon], end_coords: [lat, lon]
+    start_coords_in = data.get('start_coords')
+    end_coords_in = data.get('end_coords')
+    try:
+        # Resolve coordinates
+        if start_coords_in and end_coords_in:
+            start_coords = (float(start_coords_in[0]), float(start_coords_in[1]))
+            end_coords = (float(end_coords_in[0]), float(end_coords_in[1]))
+        else:
+            # Basic geocode to coords
+            start_loc = geolocator.geocode(start_addr + ", Việt Nam", timeout=15)
+            end_loc = geolocator.geocode(end_addr + ", Việt Nam", timeout=15)
+            if not start_loc or not end_loc:
+                return jsonify({"error": "Geocoding failed"}), 400
+
+            start_coords = (start_loc.latitude, start_loc.longitude)
+            end_coords = (end_loc.latitude, end_loc.longitude)
+
+        # Fetch routes (Goong-first)
+        routes, _ = get_route(start_coords, end_coords, options={})
+        debug = []
+        for r in routes:
+            geom = r.get('geometry')
+            coords = []
+            if isinstance(geom, str) and geom:
+                try:
+                    coords = polyline.decode(geom)
+                except Exception:
+                    try:
+                        coords = polyline.decode(geom, precision=6)
+                    except Exception:
+                        coords = []
+            elif isinstance(geom, list) and geom:
+                coords = geom
+
+            # compute stats
+            point_count = len(coords)
+            max_gap = 0.0
+            if point_count > 1:
+                for i in range(point_count - 1):
+                    try:
+                        d = geodesic((coords[i][0], coords[i][1]), (coords[i+1][0], coords[i+1][1])).km
+                        if d > max_gap: max_gap = d
+                    except Exception:
+                        continue
+
+            highways = find_highway_stations_on_route(coords, max_distance_km=0.1) if coords else []
+            debug.append({
+                'name': r.get('name'),
+                'point_count': point_count,
+                'max_gap_km': round(max_gap, 3),
+                'num_highway_stops': len(highways),
+                'has_steps': bool(r.get('steps'))
             })
-    
-    nearby_stations.sort(key=lambda x: x['distance_to_route'])
-    return nearby_stations[:3]
+
+        return jsonify({'debug': debug}), 200
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+def find_highway_stations_near_route(route_coords, max_distance_km=3):
+    """Tìm trạm cao tốc - TỐI ƯU
+
+    Sử dụng `highway_nodes` + `highway_tree` (nếu có) để truy vấn nhanh,
+    fallback sang `highway_stations` nếu dữ liệu Mongo có sẵn hoặc JSON không tồn tại.
+    """
+    nearby_stations = []
+
+    # Prefer KD-Tree on highway_nodes for speed
+    if 'highway_tree' in globals() and highway_tree is not None and len(highway_nodes) > 0:
+        # Sample route to reduce queries
+        num_samples = min(50, len(route_coords))
+        step = max(1, len(route_coords) // num_samples)
+        sampled_coords = route_coords[::step]
+
+        for coord in sampled_coords:
+            try:
+                # distance_upper_bound in degrees approx (0.01 ~ 1.11 km) so convert km to degrees roughly
+                deg_bound = max(0.0001, max_distance_km / 111.0)
+                d, idx = highway_tree.query((coord[0], coord[1]), k=5, distance_upper_bound=deg_bound)
+                # idx or d may be scalars depending on k
+                if np.isscalar(idx):
+                    idxs = [idx]
+                    ds = [d]
+                else:
+                    idxs = idx
+                    ds = d
+                for dist_deg, i in zip(ds, idxs):
+                    if dist_deg == float('inf'):
+                        continue
+                    if i is None:
+                        continue
+                    if int(i) >= len(highway_nodes):
+                        continue
+                    # compute precise geodesic distance
+                    hw = highway_nodes[int(i)]
+                    try:
+                        precise_km = geodesic((hw['lat'], hw['lon']), (coord[0], coord[1])).km
+                    except Exception:
+                        precise_km = None
+                    if precise_km is not None and precise_km <= max_distance_km:
+                        nearby_stations.append({'station': hw, 'distance_to_route': round(precise_km, 3)})
+            except Exception:
+                continue
+    else:
+        # Fallback: linear scan through highway_stations loaded from MongoDB
+        if len(highway_stations) == 0:
+            return []
+        num_samples = min(10, len(route_coords))
+        step = max(1, len(route_coords) // num_samples)
+        sampled_coords = route_coords[::step]
+        for station in highway_stations:
+            station_pos = (station['lat'], station['lon'])
+            try:
+                min_distance = min(geodesic(station_pos, coord).km for coord in sampled_coords)
+            except Exception:
+                continue
+            if min_distance <= max_distance_km:
+                nearby_stations.append({
+                    'station': station,
+                    'distance_to_route': round(min_distance, 2)
+                })
+
+    # Deduplicate by station id/name and sort
+    unique = {}
+    for s in nearby_stations:
+        key = s['station'].get('id') or s['station'].get('name') or json.dumps(s['station'])
+        if key not in unique or unique[key]['distance_to_route'] > s['distance_to_route']:
+            unique[key] = s
+
+    result = sorted(unique.values(), key=lambda x: x['distance_to_route'])
+    return result[:3]
 
 def find_ferries_near_route(route_coords, max_distance_km=5):
     """Tìm phà - TỐI ƯU"""
