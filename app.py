@@ -894,7 +894,9 @@ def get_route(start_coords, end_coords, options=None):
     else:
         if user_filters.get('avoid_highways') or user_filters.get('avoid_tolls') or user_filters.get('avoid_ferries'):
             print("⚠️ Mapbox returned no routes with excludes — retrying without excludes and marking as violated (soft fallback)")
-            retry_routes = get_route_from_mapbox(start_coords, end_coords, user_filters=None)
+            # Use empty dict instead of None so the engine always receives a dict (falsy),
+            # preserving behavior while keeping the call signature consistent for testing.
+            retry_routes = get_route_from_mapbox(start_coords, end_coords, user_filters={})
             if retry_routes:
                 for rr in retry_routes:
                     rr['violated_filters'] = [k for k, v in user_filters.items() if v]
@@ -2241,9 +2243,19 @@ def reconstruct_astar_result(goal_node, nodes, route_coords, route_km_cumulative
     # Sắp xếp travel events theo km
     travel_events.sort(key=lambda x: x['km'])
     
-    # Tính thời gian
-    driving_time = goal_node.g_cost - sum(s['charge_time'] for s in charging_stops)
+    # Tính thời gian vật lý (driving + charging)
     charging_time = sum(s['charge_time'] for s in charging_stops)
+    # Driving time: compute from total distance and route_avg_speed (in km/h)
+    try:
+        if route_avg_speed and route_avg_speed > 0:
+            driving_time = (total_route_km / route_avg_speed) * 60  # minutes
+        else:
+            driving_time = 0
+    except Exception:
+        driving_time = 0
+    # Real total time is driving time + charging time
+    real_total_time = driving_time + charging_time
+
     total_cost = total_charging_cost + total_toll_cost + total_ferry_cost
     
     print(f"   💰 Phát hiện {len(toll_stations_passed)} trạm thu phí trên đường đi")
@@ -2274,7 +2286,8 @@ def reconstruct_astar_result(goal_node, nodes, route_coords, route_km_cumulative
         'total_distance': round(total_route_km, 2),
         'driving_time': round(driving_time, 1),
         'charging_time': round(charging_time, 1),
-        'total_time': round(goal_node.g_cost, 1),
+        # SỬA: Tổng thời gian thực tế = driving_time + charging_time
+        'total_time': round(real_total_time, 1),
         'charging_stops': charging_stops,
         'num_charges': len(charging_stops),
         'final_battery': round(goal_node.battery, 1),
@@ -2283,8 +2296,13 @@ def reconstruct_astar_result(goal_node, nodes, route_coords, route_km_cumulative
         'toll_cost': total_toll_cost,
         'ferry_cost': total_ferry_cost,
         'travel_events': travel_events,
+        
         'toll_stations': toll_stations_passed,
+        'num_tolls': len(toll_stations_passed),  # <--- BỔ SUNG DÒNG NÀY
+        
         'ferries': ferries_passed,
+        'num_ferries': len(ferries_passed),      # <--- BỔ SUNG DÒNG NÀY
+        
         'highway_stops': highway_stops_passed,
         'num_highway_stops': len(highway_stops_passed),
         'violation_count': sum(1 for e in travel_events if e.get('warning')),
@@ -3038,16 +3056,21 @@ def find_route():
                     
                     # Tính toán vi phạm
                     violation_count = 0
-                    if user_filters_dict['avoid_tolls'] and result['num_tolls'] > 0:
-                        violation_count += result['num_tolls']
-                        filter_feedback.append({'type': 'warning', 'icon': '<span class="icon material-symbols-rounded" style="font-size:14px">warning</span>', 'text': f"Vẫn phải qua {result['num_tolls']} trạm thu phí"})
-                    elif user_filters_dict['avoid_tolls']:
+                    
+                    # Dùng .get('num_tolls', 0) để tránh KeyError
+                    num_tolls = result.get('num_tolls', 0)
+                    if user_filters_dict.get('avoid_tolls') and num_tolls > 0:
+                        violation_count += num_tolls
+                        filter_feedback.append({'type': 'warning', 'icon': '<span class="icon material-symbols-rounded" style="font-size:14px">warning</span>', 'text': f"Vẫn phải qua {num_tolls} trạm thu phí"})
+                    elif user_filters_dict.get('avoid_tolls'):
                         filter_feedback.append({'type': 'success', 'icon': '<span class="icon material-symbols-rounded" style="font-size:14px">check_circle</span>', 'text': 'Đã tránh trạm thu phí'})
                         
-                    if user_filters_dict['avoid_ferries'] and result['num_ferries'] > 0:
-                        violation_count += result['num_ferries']
-                        filter_feedback.append({'type': 'warning', 'icon': '<span class="icon material-symbols-rounded" style="font-size:14px">warning</span>', 'text': f"Vẫn phải qua {result['num_ferries']} phà"})
-                    elif user_filters_dict['avoid_ferries']:
+                    # Dùng .get('num_ferries', 0) để tránh KeyError
+                    num_ferries = result.get('num_ferries', 0)
+                    if user_filters_dict.get('avoid_ferries') and num_ferries > 0:
+                        violation_count += num_ferries
+                        filter_feedback.append({'type': 'warning', 'icon': '<span class="icon material-symbols-rounded" style="font-size:14px">warning</span>', 'text': f"Vẫn phải qua {num_ferries} phà"})
+                    elif user_filters_dict.get('avoid_ferries'):
                         filter_feedback.append({'type': 'success', 'icon': '<span class="icon material-symbols-rounded" style="font-size:14px">directions_boat</span>', 'text': 'Đã tránh phà'})
 
                     # Highway stops (rest areas) filter feedback
