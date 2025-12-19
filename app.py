@@ -1046,9 +1046,46 @@ def decode_full_route_geometry(route_steps):
             
     return full_coords
 
-def calculate_battery_consumption(distance_km, config):
-    kwh_used = (distance_km / 100) * config['consumption']
-    return (kwh_used / config['battery_capacity']) * 100
+def calculate_battery_consumption(distance_km, config, speed_kmh=60):
+    """
+    Tính tiêu hao pin dựa trên vật lý phi tuyến tính (Non-linear).
+    Args:
+        distance_km: Quãng đường (km)
+        config: Cấu hình xe (consumption kWh/100km, battery_capacity kWh)
+        speed_kmh: Tốc độ trung bình (km/h) - Lấy từ (distance / duration) của step
+    """
+    base_consumption = config.get('consumption', 16.3) # kWh/100km (chuẩn WLTP)
+    
+    # --- 1. TÍNH HỆ SỐ TỐC ĐỘ (SPEED FACTOR) ---
+    speed_factor = 1.0
+    
+    if speed_kmh > 80:
+        # Lực cản không khí tăng mạnh ở tốc độ cao. 
+        # Ví dụ: 100km/h -> factor 1.15; 120km/h -> factor 1.3
+        # Công thức ước lượng: Tăng 1.5% cho mỗi km/h vượt ngưỡng 80
+        speed_factor = 1.0 + ((speed_kmh - 80) * 0.015)
+        
+    elif speed_kmh < 20 and speed_kmh > 0:
+        # Tắc đường: Tốn pin cho điều hòa/hệ thống điện trên mỗi km đi được
+        # Ví dụ: 10km/h -> factor 1.2
+        speed_factor = 1.0 + ((20 - speed_kmh) * 0.02)
+        
+    # --- 2. TÍNH HỆ SỐ ĐỊA HÌNH (ELEVATION FACTOR) ---
+    # TODO: Cần tích hợp API độ cao (Google Elevation hoặc OpenTopography)
+    # Hiện tại mặc định là đường bằng phẳng
+    elevation_factor = 1.0 
+    
+    # --- 3. TÍNH TOÁN CUỐI CÙNG ---
+    # Mức tiêu thụ thực tế = Cơ bản * Hệ số tốc độ * Hệ số địa hình
+    real_consumption_rate = base_consumption * speed_factor * elevation_factor
+    
+    # Tổng năng lượng tiêu thụ (kWh) cho đoạn đường này
+    kwh_used = (distance_km / 100) * real_consumption_rate
+    
+    # Trả về % pin bị trừ
+    percent_used = (kwh_used / config['battery_capacity']) * 100
+    
+    return percent_used
 
 def calculate_km_from_battery(battery_percent, config):
     kwh_available = (battery_percent / 100) * config['battery_capacity']
@@ -1535,14 +1572,14 @@ def build_cumulative_km(route_coords):
 
 
 class AStarNode:
-    """Node trong A* Search"""
+    """Node trong A* Search - Hỗ trợ Dynamic Cost (Time/Cost/Distance)"""
     def __init__(self, node_id, km_position, battery, g_cost, h_cost, parent=None, 
                  charged_at=None, charge_time=0, charge_amount=0):
         self.node_id = node_id  # 'start', 'end', hoặc index trong candidates
         self.km_position = km_position
         self.battery = battery
-        self.g_cost = g_cost  # Thời gian thực tế đã đi
-        self.h_cost = h_cost  # Heuristic: ước lượng thời gian còn lại
+        self.g_cost = g_cost  # Cost thực tế đã đi (Time/Cost/Distance tùy priority)
+        self.h_cost = h_cost  # Heuristic: ước lượng cost còn lại
         self.f_cost = g_cost + h_cost
         self.parent = parent
         self.charged_at = charged_at  # Station nếu đã sạc tại đây
@@ -1551,12 +1588,12 @@ class AStarNode:
         
     def __lt__(self, other):
         # Priority queue sắp xếp theo f_cost
-        if self.f_cost == other.f_cost:
+        if abs(self.f_cost - other.f_cost) < 1e-6:
             return self.h_cost < other.h_cost  # Tie-breaker: ưu tiên gần đích hơn
         return self.f_cost < other.f_cost
 
 
-def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, config, priority='time', user_filters=None):
+def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, config, priority='time', user_filters=None, route_avg_speed=60):
     """
     Thuật toán A* Graph-based cho EV Routing.
     
@@ -1572,6 +1609,7 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
         start_battery: Pin ban đầu (%)
         config: Cấu hình xe điện
         priority: 'time' hoặc 'cost'
+        route_avg_speed: Tốc độ trung bình của toàn lộ trình (km/h)
         
     Returns:
         dict: Kết quả routing với charging_stops, metrics, etc.
@@ -1586,6 +1624,7 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
     
     print(f"📏 Tổng quãng đường: {total_route_km:.1f}km")
     print(f"🔋 Pin xuất phát: {start_battery}%")
+    print(f"🏎️ Tốc độ trung bình lộ trình: {route_avg_speed:.1f} km/h")
     
     # Tính tầm xa hiện tại
     max_range_km = calculate_km_from_battery(start_battery, config)
@@ -1745,8 +1784,18 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
     
     # === 4. CHẠY THUẬT TOÁN A* ===
     # Tốc độ trung bình (km/h) để tính heuristic
-    AVG_SPEED_KMH = 60.0
+    AVG_SPEED_KMH = max(30.0, route_avg_speed) # Sử dụng tốc độ thực tế của lộ trình
     SAFETY_FACTOR = 1.05  # Hệ số an toàn cho tiêu hao pin
+    EST_COST_PER_KM = 600 # VND/km (ước tính chi phí sạc trung bình)
+
+    def calculate_heuristic(km_dist, priority):
+        """Tính heuristic dựa trên priority"""
+        if priority == 'distance':
+            return km_dist
+        elif priority == 'cost':
+            return km_dist * EST_COST_PER_KM
+        else: # time (default)
+            return (km_dist / AVG_SPEED_KMH) * 60 # minutes
     
     # Priority Queue: (f_cost, counter, node)
     # counter để tránh so sánh node khi f_cost bằng nhau
@@ -1754,7 +1803,7 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
     counter = 0
     
     # Node khởi đầu
-    h_start = (total_route_km / AVG_SPEED_KMH) * 60  # phút
+    h_start = calculate_heuristic(total_route_km, priority)
     start_node = AStarNode(
         node_id=0,
         km_position=0,
@@ -1795,142 +1844,144 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
         
         current_node = nodes[current.node_id]
         
-        # === EXPAND: Thử đi đến các node phía trước và các node lân cận (pruned candidate set) ===
+        # === EXPAND: Thử đi đến các node phía trước và các node lân cận ===
         candidate_indices = build_candidate_indices(current.node_id, nodes, config)
         for next_idx in candidate_indices:
             next_node = nodes[next_idx]
             
-            # Tính khoảng cách đến next_node (dùng giá trị tuyệt đối để hỗ trợ backtrack)
+            # Tính khoảng cách
             dist_on_route = abs(next_node['km_position'] - current_node['km_position'])
-            detour_dist = next_node.get('detour_km', 0) * 2  # Đi vào + ra
+            detour_dist = next_node.get('detour_km', 0) * 2
             total_dist = (dist_on_route + detour_dist) * SAFETY_FACTOR
             
-            # Tính pin tiêu thụ
-            battery_consumed = calculate_battery_consumption(total_dist, config)
+            # Tính pin tiêu thụ (Non-linear Physics)
+            battery_consumed = calculate_battery_consumption(total_dist, config, speed_kmh=route_avg_speed)
             battery_remaining = current.battery - battery_consumed
             
             # === SOFT CONSTRAINT & CHARGING LOGIC ===
             MIN_BATTERY = config.get('min_battery', 20)
             DEAD_BATTERY = 5.0
-            penalty_cost = 0
             
-            # 1. XỬ LÝ SẠC (Nếu current là station)
+            # 1. XỬ LÝ SẠC (Branching Strategy)
             if current_node['type'] == 'station' and current.battery < 100:
-                # Kích hoạt sạc nếu pin thấp hoặc chiến lược tối ưu
-                should_charge = (battery_remaining < MIN_BATTERY) or (current.battery < 80)
+                # Các mức sạc mục tiêu (Target Battery %)
+                charge_targets = []
                 
-                if should_charge:
-                    # Use smart charging strategy to decide partial vs full charge
-                    # Default safe value
-                    optimal_target = 100.0
-                    try:
-                        remaining_nodes_indices = range(current.node_id + 1, len(nodes))
-                        remaining_coords = [nodes[i]['coords'] for i in remaining_nodes_indices]
-
-                        if remaining_coords:
-                            val = calculate_optimal_charge_target(
-                                remaining_coords,
-                                current_node.get('station'),
-                                current.battery,
-                                config
-                            )
-                            # Coerce to float safely
-                            if val is not None:
-                                try:
-                                    optimal_target = float(val)
-                                except Exception:
-                                    optimal_target = 100.0
-                    except Exception as e:
-                        # Fallback to conservative behavior if optimal calculation fails
-                        print(f"⚠️ Warning: calculate_optimal_charge_target failed: {e}")
-                        optimal_target = 100.0
-
-                    # Ensure target is sufficient to reach next hop
-                    min_needed_for_next_hop = battery_consumed + MIN_BATTERY
-                    try:
-                        target_battery = max(float(optimal_target), float(min_needed_for_next_hop))
-                    except Exception:
-                        target_battery = float(optimal_target or 100.0)
-
-                    target_battery = min(100.0, target_battery)
-
-                    # Only charge if it increases battery significantly
-                    if target_battery > current.battery + 2:
-                        charge_time = calculate_charge_time(
-                            current.battery,
-                            target_battery,
-                            current_node.get('power', 150),
-                            config
-                        )
-
-                        charge_added = target_battery - current.battery
-                        energy_kwh = (charge_added / 100) * config['battery_capacity']
-
-                        # Tính lại battery sau khi sạc và sau khi đi đến next_node
-                        new_battery_after_charge = target_battery - battery_consumed
-
-                        if new_battery_after_charge >= DEAD_BATTERY:
-                            driving_time = (total_dist / AVG_SPEED_KMH) * 60
-                            
-                            # Penalty cho nhánh sạc (nếu vẫn < MIN)
-                            charge_penalty = 0
+                # Option 1: Min Safe (Vừa đủ đến next node + buffer)
+                needed_for_next = battery_consumed + MIN_BATTERY
+                if needed_for_next > current.battery:
+                    charge_targets.append(min(100.0, needed_for_next + 5.0))
+                
+                # Option 2: 80% (Fast Charging Sweet Spot)
+                if current.battery < 80:
+                    charge_targets.append(80.0)
+                
+                # Option 3: 100% (Max Range)
+                charge_targets.append(100.0)
+                
+                # Lọc trùng và sort
+                charge_targets = sorted(list(set([t for t in charge_targets if t > current.battery])))
+                
+                for target_battery in charge_targets:
+                    # Tính toán chi phí sạc
+                    charge_time = calculate_charge_time(
+                        current.battery,
+                        target_battery,
+                        current_node.get('power', 150),
+                        config
+                    )
+                    
+                    charge_added = target_battery - current.battery
+                    energy_kwh = (charge_added / 100) * config['battery_capacity']
+                    
+                    # Tính cost (tiền)
+                    price = current_node.get('station', {}).get('price_per_kwh', 3100) # Default 3100 if missing
+                    charge_cost_money = energy_kwh * price
+                    
+                    # State sau khi sạc và đi đến next node
+                    new_battery_after_charge = target_battery - battery_consumed
+                    
+                    if new_battery_after_charge >= DEAD_BATTERY:
+                        # Tính G_COST mới dựa trên Priority
+                        added_g_cost = 0
+                        driving_time = (total_dist / AVG_SPEED_KMH) * 60
+                        
+                        if priority == 'time':
+                            added_g_cost = driving_time + charge_time
+                            # Penalty nếu pin thấp
                             if new_battery_after_charge < MIN_BATTERY:
-                                charge_penalty = (MIN_BATTERY - new_battery_after_charge) * 20.0
-                                
-                            new_g_cost = current.g_cost + driving_time + charge_time + charge_penalty
-
-                            # Heuristic (với trọng số 1.5 để tăng tốc cho route dài)
-                            HEURISTIC_WEIGHT = 1.0
-                            remaining_km = total_route_km - next_node['km_position']
-                            h_cost = ((remaining_km / AVG_SPEED_KMH) * 60) * HEURISTIC_WEIGHT
-
-                            new_node = AStarNode(
-                                node_id=next_idx,
-                                km_position=next_node['km_position'],
-                                battery=new_battery_after_charge,
-                                g_cost=new_g_cost,
-                                h_cost=h_cost,
-                                parent=current,
-                                charged_at=current_node.get('station'),
-                                charge_time=charge_time,
-                                charge_amount=energy_kwh
-                            )
-
-                            heapq.heappush(pq, (new_node.f_cost, counter, new_node))
-                            counter += 1
+                                added_g_cost += (MIN_BATTERY - new_battery_after_charge) * 20.0
+                        elif priority == 'cost':
+                            added_g_cost = charge_cost_money
+                        elif priority == 'distance':
+                            added_g_cost = total_dist
+                        
+                        new_g_cost = current.g_cost + added_g_cost
+                        
+                        # Tính H_COST
+                        remaining_km = total_route_km - next_node['km_position']
+                        h_cost = calculate_heuristic(remaining_km, priority)
+                        
+                        # Tạo Node mới
+                        new_node = AStarNode(
+                            node_id=next_idx,
+                            km_position=next_node['km_position'],
+                            battery=new_battery_after_charge,
+                            g_cost=new_g_cost,
+                            h_cost=h_cost,
+                            parent=current,
+                            charged_at=current_node.get('station'),
+                            charge_time=charge_time,
+                            charge_amount=energy_kwh
+                        )
+                        
+                        heapq.heappush(pq, (new_node.f_cost, counter, new_node))
+                        counter += 1
             
             # 2. XỬ LÝ ĐI TIẾP (Không sạc thêm)
-            # Kiểm tra Hard Constraint (Dead Zone)
             if battery_remaining < DEAD_BATTERY:
-                continue # Không thể đi tiếp
+                continue
             
-            # Kiểm tra Soft Constraint (Risk Zone)
+            # Penalty cho đi tiếp
+            penalty_cost = 0
             if battery_remaining < MIN_BATTERY:
                 violation = MIN_BATTERY - battery_remaining
-                # Trọng số phạt: 1% pin thiếu = 20 phút phạt
-                penalty_cost = violation * 20.0
+                if priority == 'time':
+                    penalty_cost = violation * 20.0 # Phạt thời gian
+                elif priority == 'cost':
+                    penalty_cost = violation * 1000 # Phạt tiền (giả định) để tránh rủi ro
             
-            # === BACKTRACK PRUNING: if this is a backward move, only accept if promising ===
+            # Backtrack check
             is_backward = next_node['km_position'] < current_node['km_position']
             if is_backward:
-                driving_time = (total_dist / AVG_SPEED_KMH) * 60
-                HEURISTIC_WEIGHT = 1.5
-                remaining_km = total_route_km - next_node['km_position']
-                h_cost = ((remaining_km / AVG_SPEED_KMH) * 60) * HEURISTIC_WEIGHT
-                est_total = current.g_cost + driving_time + h_cost
-                margin = config.get('backtrack_margin_min', 5.0)
-                if est_total >= current.f_cost + margin:
-                    # Skip non-promising backward move
-                    continue
+                 # Simple pruning for backward
+                 if priority == 'time':
+                     driving_time = (total_dist / AVG_SPEED_KMH) * 60
+                     remaining_km = total_route_km - next_node['km_position']
+                     h_cost = calculate_heuristic(remaining_km, priority) * 1.5
+                     if current.g_cost + driving_time + h_cost >= current.f_cost + 5.0:
+                         continue
 
-            # === CÓ THỂ ĐI ĐƯỢC ===
+            # Tính G_COST mới
+            added_g_cost = 0
             driving_time = (total_dist / AVG_SPEED_KMH) * 60
-            new_g_cost = current.g_cost + driving_time + penalty_cost
+            
+            if priority == 'time':
+                added_g_cost = driving_time + penalty_cost
+            elif priority == 'cost':
+                added_g_cost = penalty_cost # Không tốn tiền đi, chỉ phạt rủi ro
+            elif priority == 'distance':
+                added_g_cost = total_dist
 
-            # Heuristic (với trọng số 1.5 để tăng tốc cho route dài)
-            HEURISTIC_WEIGHT = 1.5
+            new_g_cost = current.g_cost + added_g_cost
+
+            # Heuristic
             remaining_km = total_route_km - next_node['km_position']
-            h_cost = ((remaining_km / AVG_SPEED_KMH) * 60) * HEURISTIC_WEIGHT
+            h_cost = calculate_heuristic(remaining_km, priority)
+            
+            # Tăng trọng số heuristic cho time để chạy nhanh hơn
+            if priority == 'time':
+                h_cost *= 1.5
 
             new_node = AStarNode(
                 node_id=next_idx,
@@ -1980,11 +2031,21 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
             except Exception:
                 nearest_station = None
 
+        error_type = "battery_depleted"
+        message = "Không đủ năng lượng để hoàn thành hành trình"
+        suggestion = "Dung lượng pin hoặc mức tiêu thụ của xe không cho phép đi quãng đường này mà không có trạm sạc phù hợp."
+
+        # Check for Disconnected Graph (Island/Charging Desert)
+        if nearest_station and nearest_station['distance_km'] > 80: # >80km from failure point
+            error_type = "disconnected_graph"
+            message = "Khu vực bị cô lập: Không có trạm sạc trong phạm vi hoạt động."
+            suggestion = "Lộ trình đi qua vùng trắng trạm sạc (khoảng cách > 80km). Vui lòng chọn cung đường khác."
+
         error_info = {
             "error": "infeasible",
-            "error_type": "battery_depleted",
+            "error_type": error_type,
             "severity": "critical",
-            "message": "Không đủ năng lượng để hoàn thành hành trình",
+            "message": message,
             "analysis": {
                 "total_dist": round(total_route_km, 1),
                 "max_range": round(max_range_km, 1),
@@ -1994,15 +2055,15 @@ def a_star_ev_routing(start_coords, end_coords, route_coords, start_battery, con
                 "fail_coords": list(failure_point)
             },
             "nearest_rescue": nearest_station,
-            "suggestion": "Dung lượng pin hoặc mức tiêu thụ của xe không cho phép đi quãng đường này mà không có trạm sạc phù hợp."
+            "suggestion": suggestion
         }
         return None, error_info
     
     # Reconstruct path
-    return reconstruct_astar_result(best_solution, nodes, route_coords, route_km_cumulative, config, user_filters=user_filters)
+    return reconstruct_astar_result(best_solution, nodes, route_coords, route_km_cumulative, config, user_filters=user_filters, route_avg_speed=route_avg_speed)
 
 
-def reconstruct_astar_result(goal_node, nodes, route_coords, route_km_cumulative, config, user_filters=None):
+def reconstruct_astar_result(goal_node, nodes, route_coords, route_km_cumulative, config, user_filters=None, route_avg_speed=60):
     """
     Tái tạo kết quả từ A* goal_node.
     
@@ -2056,7 +2117,7 @@ def reconstruct_astar_result(goal_node, nodes, route_coords, route_km_cumulative
                     prev_km = nodes[prev_node.node_id]['km_position']
                     curr_km = station_km
                     dist = (curr_km - prev_km) * 1.05
-                    consumed = calculate_battery_consumption(dist, config)
+                    consumed = calculate_battery_consumption(dist, config, speed_kmh=route_avg_speed)
                     arrival_battery = prev_node.battery - consumed
                     break
             
@@ -2188,37 +2249,48 @@ def reconstruct_astar_result(goal_node, nodes, route_coords, route_km_cumulative
     print(f"   💰 Phát hiện {len(toll_stations_passed)} trạm thu phí trên đường đi")
     print(f"   🚢 Phát hiện {len(ferries_passed)} phà trên đường đi")
     
+    # Check for Dead End (No chargers near destination)
+    destination_warning = None
+    try:
+        end_coords = route_coords[-1]
+        if station_tree is not None and len(stations) > 0:
+            # Check within 50km radius
+            dists, idxs = station_tree.query(end_coords, k=1)
+            # idxs can be int or array depending on k
+            idx = idxs if isinstance(idxs, (int, np.integer)) else idxs[0]
+            
+            nearest_dist_km = geodesic(end_coords, (stations[idx]['lat'], stations[idx]['lon'])).km
+            
+            if nearest_dist_km > 50.0:
+                destination_warning = {
+                    'type': 'dead_end',
+                    'message': 'Điểm đến không có trạm sạc lân cận (trong 50km). Bạn cần đảm bảo đủ pin để quay lại.',
+                    'nearest_station_km': round(nearest_dist_km, 1)
+                }
+    except Exception as e:
+        print(f"⚠️ Error checking destination chargers: {e}")
+
     return {
         'total_distance': round(total_route_km, 2),
         'driving_time': round(driving_time, 1),
         'charging_time': round(charging_time, 1),
         'total_time': round(goal_node.g_cost, 1),
-        'num_charges': len(charging_stops),
         'charging_stops': charging_stops,
-        'final_battery': round(max(0, goal_node.battery), 1),
-        'feasible': True,
-        
-        # Chi phí
-        'charging_cost': round(total_charging_cost, 0),
-        'toll_cost': round(total_toll_cost, 0),
-        'ferry_cost': round(total_ferry_cost, 0),
-        'total_cost': round(total_cost, 0),
-        
-        # Chi tiết các trạm
-        'toll_stations_passed': toll_stations_passed,
-        'num_tolls': len(toll_stations_passed),
-        'ferries_passed': ferries_passed,
-        'num_ferries': len(ferries_passed),
-        'highway_stops_passed': highway_stops_passed,
-        'num_highway_stops': len(highway_stops_passed),
-        
-        # Travel events
+        'num_charges': len(charging_stops),
+        'final_battery': round(goal_node.battery, 1),
+        'total_cost': total_cost,
+        'charging_cost': total_charging_cost,
+        'toll_cost': total_toll_cost,
+        'ferry_cost': total_ferry_cost,
         'travel_events': travel_events,
-        
-        # ✅ GEOMETRY: Trả về tọa độ chi tiết để Frontend vẽ đường mượt mà
-        'geometry_coords': route_coords,  # Mảng [[lat, lon], ...] đầy đủ
-        
-        # A* metadata (để debug/bảo vệ đồ án)
+        'toll_stations': toll_stations_passed,
+        'ferries': ferries_passed,
+        'highway_stops': highway_stops_passed,
+        'num_highway_stops': len(highway_stops_passed),
+        'violation_count': sum(1 for e in travel_events if e.get('warning')),
+        'destination_warning': destination_warning,
+        'feasible': True,
+        'geometry_coords': route_coords,
         'algorithm': 'A* Graph-based',
         'nodes_explored': len([n for n in [goal_node] if n])
     }, None
@@ -2925,14 +2997,31 @@ def find_route():
                                 else:
                                     log_status("⚠️ Mapbox soft fallback cũng không trả lộ trình")
 
+                # Calculate average speed for this route candidate (for physics model)
+                route_dist_m = base_route.get('distance', 0)
+                route_dur_s = base_route.get('duration', 0)
+                
+                # Fallback if not at top level (sometimes in summary)
+                if route_dist_m == 0 and 'summary' in base_route:
+                    route_dist_m = base_route['summary'].get('distance', 0)
+                    route_dur_s = base_route['summary'].get('duration', 0)
+                
+                route_avg_speed = 60.0
+                if route_dur_s > 0:
+                    route_avg_speed = (route_dist_m / 1000.0) / (route_dur_s / 3600.0)
+                
+                # Clamp reasonable values (20-120 km/h)
+                route_avg_speed = max(20.0, min(120.0, route_avg_speed))
+
                 result, err = a_star_ev_routing(
                     start_coords, 
                     end_coords, 
                     route_coords, 
                     float(data.get('start_battery', 100)), 
                     user_config, 
-                    priority='time',
-                    user_filters=user_filters_dict
+                    priority=data.get('priority', 'time'),
+                    user_filters=user_filters_dict,
+                    route_avg_speed=route_avg_speed
                 )
                 
                 if result:
