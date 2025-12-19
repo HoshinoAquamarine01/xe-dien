@@ -1,5 +1,15 @@
 # HỆ THỐNG TỐI ƯU LỘ TRÌNH CHO XE ĐIỆN
 
+## Changelog (Cập nhật gần đây) — 2025-12-19
+
+- ✅ **Non-linear battery consumption**: Mô hình tiêu thụ năng lượng cập nhật để phụ thuộc vào tốc độ (speed-aware), cải thiện độ chính xác cho cao tốc và trường hợp tắc đường. (file: `app.py`)
+- ✅ **A\* upgrades & dynamic costs**: Hỗ trợ chi phí động theo **time/cost/distance**, chiến lược phân nhánh khi gợi ý trạm sạc và truyền `route_avg_speed` vào tính toán. (file: `app.py`)
+- ✅ **Edge-case handling**: Phát hiện **Dead End** (điểm đến không có trạm sạc trong 50km) và **Disconnected Graph** (vùng cô lập trạm sạc; nearest_rescue > 80km). Trả về `destination_warning` / `infeasibility` với `error_type` tương ứng để frontend hiển thị cảnh báo. (file: `app.py`)
+- ✅ **Frontend UI fixes**: Popup trạm dừng cao tốc được làm nổi bật màu đỏ khi là cảnh báo; đoạn đường cao tốc được tô đỏ khi không thể tránh; thêm badge cảnh báo cho route khi điểm đến xa trạm sạc. (file: `templates/index.html`)
+- ✅ **API improvements**: Thuộc tính mới trong response như `destination_warning`, `feasible` flag, và lỗi dạng `disconnected_graph`/`battery_depleted` để UI xử lý chính xác.
+
+> Ghi chú: Sau khi cập nhật, chạy `python app.py` và thử những trường hợp với các tuỳ chọn `avoid_*` hoặc thay đổi `start_battery` để xác thực cảnh báo và modal không khả thi.
+
 ## 4.1 Công cụ và Thư viện Sử dụng
 
 ### Backend (Python Flask)
