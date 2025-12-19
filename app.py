@@ -854,26 +854,7 @@ def get_route(start_coords, end_coords, options=None):
     
     if mapbox_routes:
         print(f"✅ Mapbox backup thành công!")
-    else:
-        # Soft fallback: If user requested a strict avoid (e.g., avoid_highways) and Mapbox returned no routes
-        # retry without excludes and mark returned routes as violating that filter (soft violation)
-        if user_filters.get('avoid_highways') or user_filters.get('avoid_tolls') or user_filters.get('avoid_ferries'):
-            print("⚠️ Mapbox returned no routes with excludes — retrying without excludes and marking as violated (soft fallback)")
-            retry_routes = get_route_from_mapbox(start_coords, end_coords, user_filters=None)
-            if retry_routes:
-                # annotate routes to indicate they violate requested filters
-                for rr in retry_routes:
-                    rr['violated_filters'] = [k for k, v in user_filters.items() if v]
-                    # Add a filter_feedback warning so UI will show it
-                    ff = rr.get('filter_feedback', [])
-                    ff.append({'type': 'warning', 'icon': '<span class="icon material-symbols-rounded" style="font-size:14px">warning</span>', 'text': 'Không thể tránh hoàn bộ các tuỳ chọn lọc'})
-                    rr['filter_feedback'] = ff
-                print("✅ Soft fallback obtained routes (marked as violated)")
-                ROUTE_CACHE[cache_key] = {'data': retry_routes, 'time': time.time()}
-                return retry_routes, None
-            else:
-                print("⚠️ Soft fallback also returned no routes — giving up on Mapbox backup")
-        # Validate VN bounds
+        
         def route_outside_vietnam(route):
             coords = []
             geom = route.get('geometry')
@@ -908,9 +889,23 @@ def get_route(start_coords, end_coords, options=None):
             else:
                 print("⚠️ Forced Mapbox waypoint did not yield alternate route; keeping Mapbox route")
 
-        # Lưu cache
         ROUTE_CACHE[cache_key] = {'data': mapbox_routes, 'time': time.time()}
         return mapbox_routes, None
+    else:
+        if user_filters.get('avoid_highways') or user_filters.get('avoid_tolls') or user_filters.get('avoid_ferries'):
+            print("⚠️ Mapbox returned no routes with excludes — retrying without excludes and marking as violated (soft fallback)")
+            retry_routes = get_route_from_mapbox(start_coords, end_coords, user_filters=None)
+            if retry_routes:
+                for rr in retry_routes:
+                    rr['violated_filters'] = [k for k, v in user_filters.items() if v]
+                    ff = rr.get('filter_feedback', [])
+                    ff.append({'type': 'warning', 'icon': '<span class="icon material-symbols-rounded" style="font-size:14px">warning</span>', 'text': 'Không thể tránh hoàn bộ các tuỳ chọn lọc'})
+                    rr['filter_feedback'] = ff
+                print("✅ Soft fallback obtained routes (marked as violated)")
+                ROUTE_CACHE[cache_key] = {'data': retry_routes, 'time': time.time()}
+                return retry_routes, None
+            else:
+                print("⚠️ Soft fallback also returned no routes — giving up on Mapbox backup")
     
     # === 6. TẤT CẢ ĐỀU THẤT BẠI ===
     print("=" * 50)
