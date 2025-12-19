@@ -3456,6 +3456,35 @@
               .addTo(map);
       }
 
+      // --- BỔ SUNG HÀM BỊ THIẾU ---
+      // Hàm tô màu cao tốc (Định nghĩa đơn giản để tránh lỗi)
+      function highlightHighwaysForRoute(routeData, nearbyFeatures, avoidHighways = false) {
+          try {
+              console.log("⚠️ highlightHighwaysForRoute: Chạy (nhưng chưa có logic cụ thể), avoidHighways=", avoidHighways);
+
+              // Xoá các layer/highway-source trước đó để tránh chồng lấn
+              if (window.map) {
+                  const style = map.getStyle && map.getStyle();
+                  const layers = (style && style.layers) || [];
+                  layers.forEach(layer => {
+                      try {
+                          if (layer && layer.id && layer.id.includes('highway-highlight')) {
+                              if (map.getLayer(layer.id)) map.removeLayer(layer.id);
+                          }
+                      } catch (e) { /* ignore */ }
+                  });
+                  if (map.getSource && map.getSource('highway-source')) {
+                      try { map.removeSource('highway-source'); } catch (e) { /* ignore */ }
+                  }
+              }
+
+              // NOTE: Nếu muốn thêm logic thực sự, có thể parse routeData.highway_segments hoặc nearbyFeatures
+              // và chèn một source/layer GeoJSON với id 'highway-source' và layer ids chứa 'highway-highlight'.
+          } catch (err) {
+              console.warn('highlightHighwaysForRoute error', err);
+          }
+      }
+
      function drawRouteOnGoong(routes, nearbyFeatures) {
         // 1. Dọn dẹp layer cũ
         const LAYERS_TO_CLEAR = [
@@ -5335,6 +5364,51 @@ function createGoongMarker(el, lngLat, popupHTML, offset, dataObj) {
             } catch (err) { console.warn('openCarSettings fallback failed', err); }
         }
 
+
+      // --- BỔ SUNG HÀM BỊ THIẾU ---
+      // Renders the selected route on the map. Accepts either route object or index.
+      function renderSelectedRoute(routeOrIndex) {
+          try {
+              console.log('📍 renderSelectedRoute đang chạy...');
+              let routeData = null;
+              if (typeof routeOrIndex === 'number') routeData = (currentRoutes || [])[routeOrIndex];
+              else routeData = routeOrIndex;
+
+              if (!routeData) {
+                  console.warn('renderSelectedRoute: Không có routeData');
+                  return;
+              }
+
+              // Reuse existing draw function (expects array of routes)
+              if (typeof drawRouteOnGoong === 'function') {
+                  try { drawRouteOnGoong([routeData], cachedNearbyFeatures || {}); } catch (e) { console.warn('drawRouteOnGoong failed inside renderSelectedRoute', e); }
+              } else {
+                  console.error('Không tìm thấy hàm drawRouteOnGoong!');
+              }
+
+              // Fit bounds to geometry if available
+              try {
+                  const coordsRaw = routeData.geometry_coords || [];
+                  if (coordsRaw && coordsRaw.length > 0 && window.map) {
+                      let minLon = 180, minLat = 90, maxLon = -180, maxLat = -90;
+                      coordsRaw.forEach(c => {
+                          if (!c || c.length < 2) return;
+                          const lat = Number(c[0]);
+                          const lon = Number(c[1]);
+                          if (isNaN(lat) || isNaN(lon)) return;
+                          minLon = Math.min(minLon, lon);
+                          maxLon = Math.max(maxLon, lon);
+                          minLat = Math.min(minLat, lat);
+                          maxLat = Math.max(maxLat, lat);
+                      });
+                      if (minLon <= maxLon && minLat <= maxLat) {
+                          try { map.fitBounds([[minLon, minLat], [maxLon, maxLat]], { padding: 50 }); } catch(e) { console.warn('fitBounds failed', e); }
+                      }
+                  }
+              } catch(e) { console.warn('renderSelectedRoute fitBounds error', e); }
+
+          } catch (err) { console.warn('renderSelectedRoute error', err); }
+      }
 
       // === SHOW ROUTE DETAIL ===
       function showRouteDetail(index) {
