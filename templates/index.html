@@ -5739,10 +5739,14 @@ function createGoongMarker(el, lngLat, popupHTML, offset, dataObj) {
 
       // === HELPER: FORMAT DURATION ===
       function formatDuration(minutes) {
-        const h = Math.floor(minutes / 60);
-        const m = Math.round(minutes % 60);
+        if (minutes === undefined || minutes === null || Number.isNaN(minutes)) return '—';
+
+        const totalMinutes = Math.max(0, Math.round(minutes)); // normalize to a whole number of minutes
+        const h = Math.floor(totalMinutes / 60);
+        const m = totalMinutes % 60; // avoid showing 60 phút; carry is in h
+
         if (h > 0) {
-            return `${h} giờ ${m > 0 ? m + ' phút' : ''}`;
+            return m > 0 ? `${h} giờ ${m} phút` : `${h} giờ`;
         }
         return `${m} phút`;
       }
