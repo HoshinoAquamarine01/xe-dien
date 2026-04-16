@@ -537,13 +537,7 @@ CMD ["python", "app.py"]
 
 ---
 
-## Liên hệ & Hỗ trợ
 
-- **Email**: support@example.com
-- **Issues**: GitHub Issues
-- **Documentation**: [Link tài liệu]
-
----
 
 **Phiên bản**: 1.0.0  
 **Ngày cập nhật**: 2024-01-XX  
