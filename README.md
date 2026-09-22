@@ -1,6 +1,6 @@
 # HỆ THỐNG TỐI ƯU LỘ TRÌNH CHO XE ĐIỆN
 
-## Changelog (Cập nhật gần đây) — 2026-05-20
+## Changelog (Cập nhật gần đây) — 2026-09-22
 
 - ✅ **Non-linear battery consumption**: Mô hình tiêu thụ năng lượng cập nhật để phụ thuộc vào tốc độ (speed-aware), cải thiện độ chính xác cho cao tốc và trường hợp tắc đường. (file: `app.py`)
 - ✅ **A\* upgrades & dynamic costs**: Hỗ trợ chi phí động theo **time/cost/distance**, chiến lược phân nhánh khi gợi ý trạm sạc và truyền `route_avg_speed` vào tính toán. (file: `app.py`)
@@ -534,11 +534,4 @@ COPY . .
 EXPOSE 5000
 CMD ["python", "app.py"]
 ```
-Liên hê nếu có problem
----
 
-
-
-**Phiên bản**: 1.0.0  
-**Ngày cập nhật**: 2024-01-XX  
-**Tác giả**: [Tên nhóm/cá nhân]
